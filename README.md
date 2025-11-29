@@ -1,13 +1,15 @@
 # Hunter Alert App
 
 ## Overview
-Hunter Alert is a Next.js-based client experience currently focused on UI and interaction flows for constrained-network safety scenarios. The repository presently contains only frontend assets (React components, styling, and configuration) with no server-side runtime bundled in the codebase.
+Hunter Alert is a Next.js-based client experience tuned for constrained networks such as satellite links. The repository now includes Supabase backend assets (schema, security policies, and RPC functions) alongside the web client.
 
-## Backend status (clean slate)
-- No backend or server artifacts are present (no `/api`, `/server`, `/functions`, `/backend`, or Supabase configuration directories exist in the repository).
-- Package scripts are limited to Next.js client workflows (`dev`, `build`, `start`, `lint`) and do not invoke any legacy backend tasks.
-- There are no CI workflows or build configurations referencing backend jobs.
-- Supabase and other backend services have not been initialized yet; this README section documents the clean slate before introducing a new Supabase stack.
+## Backend setup
+1. Install the Supabase CLI: `npm install -g supabase`.
+2. Copy environment variables: `cp backend/.env.example backend/.env` and fill in your project values.
+3. Start a local stack: `supabase start` (from the `backend` directory if you prefer a clean context).
+4. Apply the schema: `supabase db reset` or `supabase db push` to run `backend/supabase/migrations/0001_init.sql`.
+5. Run backend checks: `npm run lint --prefix backend` to validate the migration and env sample are present.
+6. RPCs are defined in SQL and exposed by Supabase as `send_message_batch` and `pull_updates` with built-in batch size limits.
 
 ## Frontend development
 - `pnpm dev` (or `npm run dev`) to start the Next.js development server.
@@ -15,6 +17,10 @@ Hunter Alert is a Next.js-based client experience currently focused on UI and in
 - `pnpm start` (or `npm run start`) to serve the production build.
 - `pnpm lint` (or `npm run lint`) to run lint checks.
 
+## Documentation
+- `docs/api.md` documents RPC payloads and expected responses.
+- `docs/network-modes.md` describes how the client should adapt requests in normal, satellite, and offline modes.
+
 ## Next steps
-- Plan and bootstrap the Supabase backend (schema, security policies, and RPC/edge functions) once the new backend design is ready.
-- Wire the client to the Supabase SDK after backend scaffolding is in place.
+- Wire the frontend to the Supabase API wrapper in `lib/supabase/`.
+- Add mobile-specific networking plugins for Android/iOS to detect constrained links and adjust sync cadence.
