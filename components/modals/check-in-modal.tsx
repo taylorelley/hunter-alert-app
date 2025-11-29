@@ -18,21 +18,28 @@ export function CheckInModal({ isOpen, onClose }: CheckInModalProps) {
   const [notes, setNotes] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   if (!isOpen) return null
 
   const handleSubmit = async () => {
     setIsSubmitting(true)
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    checkIn(status, notes)
-    setIsComplete(true)
-    setTimeout(() => {
-      setIsComplete(false)
-      setNotes("")
-      setStatus("ok")
-      onClose()
-    }, 1500)
-    setIsSubmitting(false)
+    setError(null)
+    try {
+      await checkIn(status, notes)
+      setIsComplete(true)
+      setTimeout(() => {
+        setIsComplete(false)
+        setNotes("")
+        setStatus("ok")
+        onClose()
+      }, 1500)
+    } catch (err) {
+      console.error(err)
+      setError("Unable to send check-in. Please sign in and ensure a trip is active.")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -129,6 +136,8 @@ export function CheckInModal({ isOpen, onClose }: CheckInModalProps) {
                 </div>
                 <span className="text-muted-foreground">Auto-captured</span>
               </div>
+
+              {error && <p className="text-sm text-danger">{error}</p>}
 
               {/* Submit Button */}
               <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full h-12 text-base font-semibold">

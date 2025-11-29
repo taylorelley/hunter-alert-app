@@ -22,6 +22,8 @@ export function PlanTripModal({ isOpen, onClose }: PlanTripModalProps) {
   const [selectedContacts, setSelectedContacts] = useState<string[]>(emergencyContacts.map((c) => c.name))
   const [notes, setNotes] = useState("")
   const [isComplete, setIsComplete] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   if (!isOpen) return null
 
@@ -42,26 +44,35 @@ export function PlanTripModal({ isOpen, onClose }: PlanTripModalProps) {
     }
   }
 
-  const handleSubmit = () => {
-    startTrip({
-      destination,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-      checkInCadence,
-      emergencyContacts: selectedContacts,
-      notes,
-    })
-    setIsComplete(true)
-    setTimeout(() => {
-      setIsComplete(false)
-      setStep(1)
-      setDestination("")
-      setStartDate("")
-      setEndDate("")
-      setCheckInCadence(4)
-      setNotes("")
-      onClose()
-    }, 2000)
+  const handleSubmit = async () => {
+    setIsSubmitting(true)
+    setError(null)
+    try {
+      await startTrip({
+        destination,
+        startDate: new Date(startDate),
+        endDate: new Date(endDate),
+        checkInCadence,
+        emergencyContacts: selectedContacts,
+        notes,
+      })
+      setIsComplete(true)
+      setTimeout(() => {
+        setIsComplete(false)
+        setStep(1)
+        setDestination("")
+        setStartDate("")
+        setEndDate("")
+        setCheckInCadence(4)
+        setNotes("")
+        onClose()
+      }, 2000)
+    } catch (err) {
+      console.error(err)
+      setError("Sign in is required before you can start a trip.")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const toggleContact = (name: string) => {
@@ -289,6 +300,7 @@ export function PlanTripModal({ isOpen, onClose }: PlanTripModalProps) {
                       className="w-full p-3 rounded-lg bg-input border border-border resize-none h-20 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
+                  {error && <p className="text-sm text-danger">{error}</p>}
                 </div>
               )}
 
@@ -306,8 +318,12 @@ export function PlanTripModal({ isOpen, onClose }: PlanTripModalProps) {
                     <ChevronRight className="w-4 h-4 ml-1" />
                   </Button>
                 ) : (
-                  <Button onClick={handleSubmit} className="flex-1 bg-safe hover:bg-safe/90 text-safe-foreground">
-                    Start Trip
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={isSubmitting}
+                    className="flex-1 bg-safe hover:bg-safe/90 text-safe-foreground"
+                  >
+                    {isSubmitting ? "Starting..." : "Start Trip"}
                   </Button>
                 )}
               </div>
