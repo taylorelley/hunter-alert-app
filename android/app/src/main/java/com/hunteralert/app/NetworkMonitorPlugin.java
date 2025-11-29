@@ -46,7 +46,8 @@ public class NetworkMonitorPlugin extends Plugin {
 
         // Remove the "not constrained" capability to allow satellite and other constrained networks
         // This aligns with Android's satellite network guidelines
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        // NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED is available from API 34+
+        if (Build.VERSION.SDK_INT >= 34) {
             requestBuilder.removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED);
         }
 
@@ -137,7 +138,14 @@ public class NetworkMonitorPlugin extends Plugin {
 
         // Determine if network is constrained
         // A network is constrained if it does NOT have the NOT_BANDWIDTH_CONSTRAINED capability
-        boolean constrained = !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED);
+        // NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED is available from API 34+
+        boolean constrained = false;
+        if (Build.VERSION.SDK_INT >= 34) {
+            constrained = !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED);
+        } else {
+            // For older APIs, consider cellular as potentially constrained
+            constrained = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR);
+        }
 
         // Determine if network is expensive (metered)
         boolean expensive = !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
