@@ -1,9 +1,21 @@
 node_modules
 .env
 .env.*
+!.env.example
 backend/.env
 supabase/.branches
 supabase/.temp
 .DS_Store
 .next
+out
 pnpm-debug.log*
+
+# Capacitor
+ios/App/Pods
+ios/App/Podfile.lock
+ios/App/build
+android/app/build
+android/build
+android/.gradle
+*.apk
+*.ipa

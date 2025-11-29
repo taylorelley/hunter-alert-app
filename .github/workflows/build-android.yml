@@ -1,0 +1,126 @@
+name: Build Android APK
+
+# Required GitHub Secrets:
+# - NEXT_PUBLIC_SUPABASE_URL: Your Supabase project URL
+# - NEXT_PUBLIC_SUPABASE_ANON_KEY: Your Supabase anonymous key
+# Set these in: Repository Settings → Secrets and variables → Actions
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Next.js app
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build Android APK
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-release
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}-${{ github.run_number }}
+          release_name: Release v${{ steps.version.outputs.version }}-${{ github.run_number }}
+          draft: false
+          prerelease: false
+          body: |
+            ## Hunter Alert - Android Build
+
+            **Version:** ${{ steps.version.outputs.version }}
+            **Build:** ${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+
+            ### Changes
+            ${{ github.event.head_commit.message }}
+
+            ### Installation
+            Download the APK and install it on your Android device.
+
+            ### Features
+            - Network monitoring with satellite and constrained network support
+            - Offline-first architecture with sync capabilities
+            - Optimized for low-bandwidth connections
+
+      - name: Upload Release APK
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./app-release-unsigned.apk
+          asset_name: hunter-alert-v${{ steps.version.outputs.version }}-${{ github.run_number }}.apk
+          asset_content_type: application/vnd.android.package-archive
