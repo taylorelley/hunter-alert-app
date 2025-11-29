@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { AppProvider } from "@/components/app-provider"
+import { NetworkProvider } from "@/components/network-provider"
 import { MobileNav } from "@/components/mobile-nav"
 import { StatusHeader } from "@/components/status-header"
 import { HomeView } from "@/components/home-view"
@@ -53,8 +54,10 @@ function HunterAlertApp() {
 
 export default function Page() {
   return (
-    <AppProvider>
-      <HunterAlertApp />
-    </AppProvider>
+    <NetworkProvider>
+      <AppProvider>
+        <HunterAlertApp />
+      </AppProvider>
+    </NetworkProvider>
   )
 }

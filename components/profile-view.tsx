@@ -23,13 +23,34 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { useApp } from "./app-provider"
+import { useNetwork } from "./network-provider"
 
 export function ProfileView() {
-  const { userName, isPremium, emergencyContacts, isOnline, setOnlineStatus } = useApp()
+  const { userName, isPremium, emergencyContacts, signIn, signOut, session } = useApp()
+  const { state: network } = useNetwork()
   const [locationSharing, setLocationSharing] = useState(true)
   const [tripVisibility, setTripVisibility] = useState(true)
   const [waypointSharing, setWaypointSharing] = useState(true)
   const [anonymousMode, setAnonymousMode] = useState(true)
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [authLoading, setAuthLoading] = useState(false)
+
+  const handleSignIn = async () => {
+    setAuthError(null)
+    setAuthLoading(true)
+    try {
+      await signIn(email, password)
+      setEmail("")
+      setPassword("")
+    } catch (err) {
+      console.error(err)
+      setAuthError("Unable to sign in. Check your credentials and network state.")
+    } finally {
+      setAuthLoading(false)
+    }
+  }
 
   return (
     <div className="flex-1 overflow-y-auto pb-24">
@@ -40,7 +61,7 @@ export function ProfileView() {
             <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center">
               <User className="w-10 h-10 text-primary" />
             </div>
-            {isOnline && (
+            {network.connectivity !== "offline" && (
               <div className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-safe border-2 border-background" />
             )}
           </div>
@@ -58,10 +79,42 @@ export function ProfileView() {
               </span>
             )}
           </div>
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" onClick={signOut} disabled={!session}>
             <Settings className="w-5 h-5" />
           </Button>
         </div>
+
+        {!session && (
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="font-semibold">Sign in</p>
+                  <p className="text-sm text-muted-foreground">Use your Supabase credentials to sync trips and messages.</p>
+                </div>
+              </div>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                className="w-full p-3 rounded-lg bg-input border border-border text-sm"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                className="w-full p-3 rounded-lg bg-input border border-border text-sm"
+              />
+              {authError && <p className="text-sm text-danger">{authError}</p>}
+              <Button onClick={handleSignIn} disabled={authLoading || !email || !password} className="w-full">
+                {authLoading ? "Signing in..." : "Sign in"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Premium Upgrade */}
         {!isPremium && (
@@ -242,9 +295,11 @@ export function ProfileView() {
         <Button
           variant="outline"
           className="w-full text-danger border-danger/30 hover:bg-danger/10 hover:text-danger bg-transparent"
+          onClick={signOut}
+          disabled={!session}
         >
           <LogOut className="w-4 h-4 mr-2" />
-          Sign Out
+          {session ? "Sign Out" : "Sign in required"}
         </Button>
 
         {/* Version */}
