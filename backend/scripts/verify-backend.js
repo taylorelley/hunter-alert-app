@@ -12,6 +12,10 @@ const envPath = path.join(__dirname, '..', '.env.example');
 const migrationPath = path.join(__dirname, '..', 'supabase', 'migrations', '0001_init.sql');
 
 function checkEnvSample() {
+  if (!fs.existsSync(envPath)) {
+    throw new Error('.env.example is missing — add the sample to document backend secrets.');
+  }
+
   const body = fs.readFileSync(envPath, 'utf8');
   requiredEnvKeys.forEach((key) => {
     if (!body.includes(key)) {
