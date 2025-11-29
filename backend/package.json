@@ -1,0 +1,8 @@
+{
+  "name": "hunter-alert-backend",
+  "private": true,
+  "scripts": {
+    "lint": "node scripts/verify-backend.js",
+    "test": "node scripts/verify-backend.js"
+  }
+}

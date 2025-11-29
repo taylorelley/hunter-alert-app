@@ -1,0 +1,9 @@
+node_modules
+.env
+.env.*
+backend/.env
+supabase/.branches
+supabase/.temp
+.DS_Store
+.next
+pnpm-debug.log*
