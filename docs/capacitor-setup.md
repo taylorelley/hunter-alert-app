@@ -50,11 +50,17 @@ requestBuilder.removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH
 
 ### Satellite Detection
 
-On Android API 31+, satellite networks are detected using:
+Satellite networks are detected using:
 
 ```java
+// Satellite transport detection (API 31+)
 capabilities.hasTransport(NetworkCapabilities.TRANSPORT_SATELLITE)
+
+// Bandwidth constraint detection (API 34+)
+capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED)
 ```
+
+**Note:** This app requires Android 14+ (API 34) as the minimum version to ensure full satellite network support.
 
 ### Permissions
 
@@ -127,7 +133,7 @@ NetworkMonitor.addListener('networkStatusChange', (status) => {
 - Node.js 20+
 - pnpm
 - Java 21+ (for Android - required by Capacitor 7)
-- Android SDK (for Android)
+- Android SDK (for Android) - **Requires Android 14+ (API 34+)** for satellite network support
 - Xcode (for iOS, macOS only)
 - CocoaPods (for iOS, macOS only)
 

@@ -25,7 +25,7 @@ Hunter Alert is a mobile-first application built with React, Next.js, and Capaci
 - Node.js 20+
 - pnpm
 - Java 21+ (for Android builds - required by Capacitor 7)
-- Android SDK (for Android)
+- Android SDK (for Android) - **Requires Android 14+ (API 34+)** for satellite network support
 - Xcode (for iOS, macOS only)
 - CocoaPods (for iOS, macOS only)
 
@@ -74,7 +74,7 @@ Hunter Alert is a mobile-first application built with React, Next.js, and Capaci
 
 The app includes custom Capacitor plugins for advanced network detection:
 
-- **Android**: Detects satellite networks (API 31+), constrained networks, and removes bandwidth constraints from NetworkRequest
+- **Android**: Detects satellite networks, constrained networks, and removes bandwidth constraints from NetworkRequest (requires Android 14+/API 34+)
 - **iOS**: Uses NWPathMonitor to detect constrained and expensive paths, includes carrier-constrained entitlements
 - **Web**: Falls back to Network Information API for browser development
 
