@@ -24,7 +24,7 @@ Hunter Alert is a mobile-first application built with React, Next.js, and Capaci
 ### Prerequisites
 - Node.js 20+
 - pnpm
-- Java 17+ (for Android builds)
+- Java 21+ (for Android builds - required by Capacitor 7)
 - Android SDK (for Android)
 - Xcode (for iOS, macOS only)
 - CocoaPods (for iOS, macOS only)

@@ -126,7 +126,7 @@ NetworkMonitor.addListener('networkStatusChange', (status) => {
 
 - Node.js 20+
 - pnpm
-- Java 17+ (for Android)
+- Java 21+ (for Android - required by Capacitor 7)
 - Android SDK (for Android)
 - Xcode (for iOS, macOS only)
 - CocoaPods (for iOS, macOS only)
