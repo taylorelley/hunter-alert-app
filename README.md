@@ -16,6 +16,8 @@ Hunter Alert is a Next.js-based client experience tuned for constrained networks
 - `pnpm build` (or `npm run build`) to create a production build.
 - `pnpm start` (or `npm run start`) to serve the production build.
 - `pnpm lint` (or `npm run lint`) to run lint checks.
+- `pnpm test` to execute Vitest unit tests (including the Supabase wrapper and offline queue/sync state machine).
+- `pnpm test:coverage` for a coverage report.
 
 ## Documentation
 - `docs/api.md` documents RPC payloads and expected responses.
