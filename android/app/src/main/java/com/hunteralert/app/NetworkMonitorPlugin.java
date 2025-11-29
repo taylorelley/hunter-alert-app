@@ -47,7 +47,8 @@ public class NetworkMonitorPlugin extends Plugin {
         // Remove the "not constrained" capability to allow satellite and other constrained networks
         // This aligns with Android's satellite network guidelines
         // Requires API 34+ (minSdkVersion = 34)
-        requestBuilder.removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED);
+        // NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED = 37 (added in API 34)
+        requestBuilder.removeCapability(37);
 
         NetworkRequest request = requestBuilder.build();
 
@@ -137,7 +138,8 @@ public class NetworkMonitorPlugin extends Plugin {
         // Determine if network is constrained
         // A network is constrained if it does NOT have the NOT_BANDWIDTH_CONSTRAINED capability
         // Requires API 34+ (minSdkVersion = 34)
-        boolean constrained = !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED);
+        // NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED = 37 (added in API 34)
+        boolean constrained = !capabilities.hasCapability(37);
 
         // Determine if network is expensive (metered)
         boolean expensive = !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
