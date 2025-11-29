@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Hunter Alert</string>
+    <string name="title_activity_main">Hunter Alert</string>
+    <string name="package_name">com.hunteralert.app</string>
+    <string name="custom_url_scheme">com.hunteralert.app</string>
+</resources>
