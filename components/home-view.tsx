@@ -70,26 +70,35 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
 
   // Fetch location and weather on mount
   useEffect(() => {
+    let mounted = true
     const fetchLocationAndWeather = async () => {
       try {
         setWeatherLoading(true)
         const coords = await getCurrentPosition()
+        if (!mounted) return
         setLocation(coords)
 
         // Fetch weather using location
         const weatherData = await getWeatherByCoordinates(coords.latitude, coords.longitude)
+        if (!mounted) return
         setWeather(weatherData)
       } catch (error) {
         console.error("Error fetching location/weather:", error)
         // Fall back to default weather (mock data)
         const weatherData = await getWeatherByCoordinates(43.8, -103.5) // Black Hills, SD
+        if (!mounted) return
         setWeather(weatherData)
       } finally {
-        setWeatherLoading(false)
+        if (mounted) {
+          setWeatherLoading(false)
+        }
       }
     }
 
     fetchLocationAndWeather()
+    return () => {
+      mounted = false
+    }
   }, [])
 
   // Get weather icon based on condition
