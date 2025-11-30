@@ -99,8 +99,13 @@ export async function createGroup(
   name: string,
   description?: string,
 ): Promise<Group> {
+  // Client-side validation
+  if (!name.trim()) {
+    throw new Error('Group name cannot be empty');
+  }
+
   const { data, error } = await client.rpc('create_group', {
-    group_name: name,
+    group_name: name.trim(),
     group_description: description ?? null,
   });
 
@@ -144,6 +149,14 @@ export async function addWaypoint(
     shared?: boolean;
   },
 ): Promise<Waypoint> {
+  // Client-side validation
+  if (params.latitude < -90 || params.latitude > 90) {
+    throw new Error('Latitude must be between -90 and 90');
+  }
+  if (params.longitude < -180 || params.longitude > 180) {
+    throw new Error('Longitude must be between -180 and 180');
+  }
+
   const { data, error } = await client.rpc('add_waypoint', {
     waypoint_name: params.name,
     latitude: params.latitude,
@@ -186,6 +199,17 @@ export async function createGeofence(
     notifyExit?: boolean;
   },
 ): Promise<Geofence> {
+  // Client-side validation
+  if (params.latitude < -90 || params.latitude > 90) {
+    throw new Error('Latitude must be between -90 and 90');
+  }
+  if (params.longitude < -180 || params.longitude > 180) {
+    throw new Error('Longitude must be between -180 and 180');
+  }
+  if (params.radiusMeters !== undefined && params.radiusMeters <= 0) {
+    throw new Error('Radius must be greater than 0');
+  }
+
   const { data, error } = await client.rpc('create_geofence', {
     geofence_name: params.name,
     latitude: params.latitude,

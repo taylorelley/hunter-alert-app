@@ -18,6 +18,7 @@ import {
   CloudDrizzle,
   CloudSnow,
   CloudLightning,
+  Droplets,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -225,30 +226,32 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
               </div>
             ) : weather ? (
               <>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/20">
-                      {(() => {
-                        const WeatherIcon = getWeatherIcon(weather.condition)
-                        return <WeatherIcon className="w-6 h-6 text-primary" />
-                      })()}
+                {(() => {
+                  const WeatherIcon = getWeatherIcon(weather.condition)
+                  return (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-primary/20">
+                          <WeatherIcon className="w-6 h-6 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-semibold">{weather.temperature}°F {formatCondition(weather.condition)}</p>
+                          <p className="text-sm text-muted-foreground">{weather.location}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1" title="Humidity">
+                          <Droplets className="w-4 h-4" />
+                          <span>{weather.humidity}%</span>
+                        </div>
+                        <div className="flex items-center gap-1" title="Wind Speed">
+                          <Wind className="w-4 h-4" />
+                          <span>{weather.windSpeed}mph</span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-semibold">{weather.temperature}°F {formatCondition(weather.condition)}</p>
-                      <p className="text-sm text-muted-foreground">{weather.location}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <CloudRain className="w-4 h-4" />
-                      <span>{weather.humidity}%</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Wind className="w-4 h-4" />
-                      <span>{weather.windSpeed}mph</span>
-                    </div>
-                  </div>
-                </div>
+                  )
+                })()}
                 {weather.sunrise && weather.sunset && (
                   <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">

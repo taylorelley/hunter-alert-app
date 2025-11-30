@@ -512,6 +512,10 @@ begin
     raise exception 'Authentication is required';
   end if;
 
+  if is_shared and trip_id is null then
+    raise exception 'Shared waypoints must be associated with a trip (conversation)';
+  end if;
+
   if trip_id is not null and not exists (
     select 1 from conversations
     where id = trip_id and auth.uid() = any(participant_ids)
