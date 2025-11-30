@@ -2,7 +2,7 @@ import { WebPlugin } from '@capacitor/core';
 import type { NetworkMonitorPlugin, NetworkStatus } from './network-monitor';
 
 export class NetworkMonitorWeb extends WebPlugin implements NetworkMonitorPlugin {
-  private listeners: Set<(status: NetworkStatus) => void> = new Set();
+  private statusListeners: Set<(status: NetworkStatus) => void> = new Set();
 
   constructor() {
     super();
@@ -21,7 +21,7 @@ export class NetworkMonitorWeb extends WebPlugin implements NetworkMonitorPlugin
 
   private handleNetworkChange(): void {
     this.getStatus().then(status => {
-      this.listeners.forEach(listener => listener(status));
+      this.statusListeners.forEach(listener => listener(status));
       this.notifyListeners('networkStatusChange', status);
     });
   }
@@ -68,15 +68,15 @@ export class NetworkMonitorWeb extends WebPlugin implements NetworkMonitorPlugin
     eventName: 'networkStatusChange',
     listenerFunc: (status: NetworkStatus) => void,
   ): Promise<{ remove: () => Promise<void> }> {
-    this.listeners.add(listenerFunc);
+    this.statusListeners.add(listenerFunc);
     return {
       remove: async () => {
-        this.listeners.delete(listenerFunc);
+        this.statusListeners.delete(listenerFunc);
       },
     };
   }
 
   async removeAllListeners(): Promise<void> {
-    this.listeners.clear();
+    this.statusListeners.clear();
   }
 }

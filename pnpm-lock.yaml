@@ -17,6 +17,9 @@ importers:
       '@capacitor/core':
         specifier: ^7.4.4
         version: 7.4.4
+      '@capacitor/geolocation':
+        specifier: ^7.1.6
+        version: 7.1.6(@capacitor/core@7.4.4)
       '@capacitor/ios':
         specifier: ^7.4.4
         version: 7.4.4(@capacitor/core@7.4.4)
@@ -256,10 +259,18 @@ packages:
   '@capacitor/core@7.4.4':
     resolution: {integrity: sha512-xzjxpr+d2zwTpCaN0k+C6wKSZzWFAb9OVEUtmO72ihjr/NEDoLvsGl4WLfjWPcCO2zOy0b2X52tfRWjECFUjtw==}
 
+  '@capacitor/geolocation@7.1.6':
+    resolution: {integrity: sha512-K+SXF8X01sEyCLb1ITqir5Gi3qMNnua7TMdxKmxYBAJATUGoHzJQ0itslkoP4HM6JZac+f8lTpRl1RMWKErRIg==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
+
   '@capacitor/ios@7.4.4':
     resolution: {integrity: sha512-Xp3bGWlSQAwsZGngRMWTdoD2agdMV12Whnm+/xsYPxfQSj+Tksbr7r/8Mso7VWkpnTKO4iMlx762g3PjW+wi4w==}
     peerDependencies:
       '@capacitor/core': ^7.4.0
+
+  '@capacitor/synapse@1.0.4':
+    resolution: {integrity: sha512-/C1FUo8/OkKuAT4nCIu/34ny9siNHr9qtFezu4kxm6GY1wNFxrCFWjfYx5C1tUhVGz3fxBABegupkpjXvjCHrw==}
 
   '@date-fns/tz@1.2.0':
     resolution: {integrity: sha512-LBrd7MiJZ9McsOgxqWX7AaxrDjcFVjWH/tIKJd7pnR7McaslGYOP1QmmiBXdJH/H/yLCT+rcQ7FaPBUxRGUtrg==}
@@ -2772,9 +2783,16 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
+  '@capacitor/geolocation@7.1.6(@capacitor/core@7.4.4)':
+    dependencies:
+      '@capacitor/core': 7.4.4
+      '@capacitor/synapse': 1.0.4
+
   '@capacitor/ios@7.4.4(@capacitor/core@7.4.4)':
     dependencies:
       '@capacitor/core': 7.4.4
+
+  '@capacitor/synapse@1.0.4': {}
 
   '@date-fns/tz@1.2.0': {}
 

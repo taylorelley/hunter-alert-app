@@ -78,7 +78,8 @@ export function useSyncEngine({
 
       setStatus("pulling")
       const updates = await pullUpdates(client, cursor)
-      markCursor(updates.sync_cursors?.[0]?.last_cursor ?? cursor)
+      const newCursor = updates.sync_cursors?.[0]?.last_cursor
+      markCursor(typeof newCursor === 'string' ? newCursor : cursor)
       onPullApplied?.(updates)
       setStatus("idle")
       backoffRef.current && clearTimeout(backoffRef.current)

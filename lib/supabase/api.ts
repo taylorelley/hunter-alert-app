@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { AuthResult, MessageDraft, PullUpdatesResult } from './types';
+import { AuthResult, MessageDraft, PullUpdatesResult, Group, Waypoint, Geofence } from './types';
 
 const DEFAULT_BATCH_LIMIT = Number.parseInt(process.env.BACKEND_MAX_MESSAGE_BATCH || '20', 10);
 const DEFAULT_PULL_LIMIT = Number.parseInt(process.env.BACKEND_MAX_PULL_LIMIT || '100', 10);
@@ -70,6 +70,10 @@ export async function pullUpdates(
     conversations: [],
     messages: [],
     sync_cursors: [],
+    groups: [],
+    waypoints: [],
+    geofences: [],
+    profiles: [],
   };
 
   if (data && typeof data === 'object') {
@@ -80,7 +84,150 @@ export async function pullUpdates(
     result.sync_cursors = Array.isArray(data.sync_cursors)
       ? data.sync_cursors.slice(0, maxRows)
       : [];
+    result.groups = Array.isArray(data.groups) ? data.groups.slice(0, maxRows) : [];
+    result.waypoints = Array.isArray(data.waypoints) ? data.waypoints.slice(0, maxRows) : [];
+    result.geofences = Array.isArray(data.geofences) ? data.geofences.slice(0, maxRows) : [];
+    result.profiles = Array.isArray(data.profiles) ? data.profiles.slice(0, maxRows) : [];
   }
 
   return result;
+}
+
+// Group management functions
+export async function createGroup(
+  client: SupabaseClient,
+  name: string,
+  description?: string,
+): Promise<Group> {
+  const { data, error } = await client.rpc('create_group', {
+    group_name: name,
+    group_description: description ?? null,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Group;
+}
+
+export async function joinGroup(client: SupabaseClient, groupId: string): Promise<Group> {
+  const { data, error } = await client.rpc('join_group', { group_id: groupId });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Group;
+}
+
+export async function leaveGroup(client: SupabaseClient, groupId: string): Promise<boolean> {
+  const { data, error } = await client.rpc('leave_group', { group_id: groupId });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as boolean;
+}
+
+// Waypoint management functions
+export async function addWaypoint(
+  client: SupabaseClient,
+  params: {
+    name: string;
+    latitude: number;
+    longitude: number;
+    type?: string;
+    description?: string;
+    tripId?: string;
+    shared?: boolean;
+  },
+): Promise<Waypoint> {
+  const { data, error } = await client.rpc('add_waypoint', {
+    waypoint_name: params.name,
+    latitude: params.latitude,
+    longitude: params.longitude,
+    waypoint_type: params.type ?? 'custom',
+    waypoint_description: params.description ?? null,
+    trip_id: params.tripId ?? null,
+    is_shared: params.shared ?? false,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Waypoint;
+}
+
+export async function deleteWaypoint(client: SupabaseClient, waypointId: string): Promise<boolean> {
+  const { data, error } = await client.rpc('delete_waypoint', { waypoint_id: waypointId });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as boolean;
+}
+
+// Geofence management functions
+export async function createGeofence(
+  client: SupabaseClient,
+  params: {
+    name: string;
+    latitude: number;
+    longitude: number;
+    radiusMeters?: number;
+    description?: string;
+    groupId?: string;
+    conversationId?: string;
+    notifyEntry?: boolean;
+    notifyExit?: boolean;
+  },
+): Promise<Geofence> {
+  const { data, error } = await client.rpc('create_geofence', {
+    geofence_name: params.name,
+    latitude: params.latitude,
+    longitude: params.longitude,
+    radius_meters: params.radiusMeters ?? 500,
+    geofence_description: params.description ?? null,
+    target_group_id: params.groupId ?? null,
+    target_conversation_id: params.conversationId ?? null,
+    notify_entry: params.notifyEntry ?? true,
+    notify_exit: params.notifyExit ?? true,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Geofence;
+}
+
+export async function toggleGeofence(
+  client: SupabaseClient,
+  geofenceId: string,
+  enabled: boolean,
+): Promise<Geofence> {
+  const { data, error } = await client.rpc('toggle_geofence', {
+    geofence_id: geofenceId,
+    is_enabled: enabled,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Geofence;
+}
+
+export async function deleteGeofence(client: SupabaseClient, geofenceId: string): Promise<boolean> {
+  const { data, error } = await client.rpc('delete_geofence', { geofence_id: geofenceId });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as boolean;
 }
