@@ -63,6 +63,7 @@ jobs:
             echo "KEYSTORE_PASSWORD=${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
             echo "KEY_ALIAS=${{ secrets.RELEASE_KEY_ALIAS }}" >> $GITHUB_ENV
             echo "KEY_PASSWORD=${{ secrets.RELEASE_KEY_PASSWORD }}" >> $GITHUB_ENV
+            echo "KEYSTORE_PATH=$PWD/release.keystore" >> $GITHUB_ENV
             echo "Using release keystore"
           else
             # Generate debug keystore for CI builds
@@ -80,6 +81,7 @@ jobs:
             echo "KEYSTORE_PASSWORD=android" >> $GITHUB_ENV
             echo "KEY_ALIAS=androiddebugkey" >> $GITHUB_ENV
             echo "KEY_PASSWORD=android" >> $GITHUB_ENV
+            echo "KEYSTORE_PATH=$PWD/debug.keystore" >> $GITHUB_ENV
             echo "Using generated debug keystore"
           fi
 
@@ -88,7 +90,7 @@ jobs:
           cd android
           ./gradlew assembleRelease --no-daemon
         env:
-          RELEASE_KEYSTORE_FILE: app/${{ env.KEYSTORE_FILE }}
+          RELEASE_KEYSTORE_FILE: ${{ env.KEYSTORE_PATH }}
           RELEASE_KEYSTORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ env.KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
