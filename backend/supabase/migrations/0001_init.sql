@@ -94,11 +94,14 @@ create index if not exists idx_messages_conversation_created on messages (conver
 create index if not exists idx_sync_cursors_user_updated on sync_cursors (user_id, updated_at desc);
 create index if not exists idx_groups_owner on groups (owner_id);
 create index if not exists idx_groups_updated_at on groups (updated_at desc);
+create index if not exists idx_groups_member_ids_gin on groups using gin (member_ids);
 create index if not exists idx_waypoints_conversation on waypoints (conversation_id);
 create index if not exists idx_waypoints_user on waypoints (user_id);
+create index if not exists idx_waypoints_updated_at on waypoints (updated_at desc);
 create index if not exists idx_geofences_group on geofences (group_id);
 create index if not exists idx_geofences_conversation on geofences (conversation_id);
 create index if not exists idx_geofences_user_enabled on geofences (user_id, enabled);
+create index if not exists idx_geofences_updated_at on geofences (updated_at desc);
 
 -- Timestamp maintenance
 create or replace function public.set_updated_at()

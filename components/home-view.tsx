@@ -101,6 +101,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
     if (cond.includes("drizzle")) return CloudDrizzle
     if (cond.includes("snow")) return CloudSnow
     if (cond.includes("storm") || cond.includes("thunder")) return CloudLightning
+    if (cond.includes("mist") || cond.includes("fog") || cond.includes("haze")) return Cloud
     return Sun
   }
 
