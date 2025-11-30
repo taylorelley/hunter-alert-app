@@ -123,6 +123,8 @@ Ensure these are set in your hosting platform:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anonymous key
 - `NEXT_PUBLIC_WEATHER_API_KEY` - OpenWeatherMap API key (optional, for weather features)
 
+For local testing before deployment, set these in `.env.local` (see [Frontend development](#frontend-development) section).
+
 ### Backend Deployment (Supabase)
 
 **Deploy to Supabase Cloud**:
@@ -135,6 +137,8 @@ Ensure these are set in your hosting platform:
 2. **Link your local project**:
    ```bash
    cd backend
+   # your-project-ref is the alphanumeric ID from your Supabase project URL
+   # e.g., 'abcdefghijklmnop' from https://abcdefghijklmnop.supabase.co
    supabase link --project-ref your-project-ref
    ```
 
@@ -161,9 +165,18 @@ Ensure these are set in your hosting platform:
    ```bash
    keytool -genkey -v -keystore hunter-alert.keystore \
      -alias hunter-alert -keyalg RSA -keysize 2048 -validity 10000
+   # Place the generated keystore at the repository root: hunter-alert.keystore
    ```
 
-2. **Configure signing** in `android/app/build.gradle`:
+2. **Set up environment variables**:
+   For local builds, set these before running gradle:
+   ```bash
+   export KEYSTORE_PASSWORD="your-keystore-password"
+   export KEY_PASSWORD="your-key-password"
+   ```
+   For CI/CD (e.g., GitHub Actions), store these as secrets in your platform (Settings > Secrets).
+
+3. **Configure signing** in `android/app/build.gradle`:
    ```gradle
    android {
        ...
@@ -185,7 +198,7 @@ Ensure these are set in your hosting platform:
    }
    ```
 
-3. **Build release AAB**:
+4. **Build release AAB**:
    ```bash
    # Build web app with production config
    pnpm build
@@ -201,7 +214,7 @@ Ensure these are set in your hosting platform:
    # Choose "Android App Bundle" (AAB) for Play Store
    ```
 
-4. **Upload to Google Play Console**:
+5. **Upload to Google Play Console**:
    - Create app listing at [play.google.com/console](https://play.google.com/console)
    - Upload AAB file
    - Complete store listing (screenshots, description, privacy policy)
@@ -267,7 +280,7 @@ After deploying to production, verify:
 - [ ] Network monitoring works on target platforms (Android/iOS)
 - [ ] Offline sync functionality works as expected
 - [ ] Weather API integration working (if configured)
-- [ ] Test on actual satellite/constrained networks if possible
+- [ ] Test on actual satellite/constrained networks if possible (see `docs/network-modes.md`)
 - [ ] Monitor error logs and application performance
 - [ ] Set up error tracking service (e.g., Sentry) if desired
 - [ ] Configure analytics if needed
