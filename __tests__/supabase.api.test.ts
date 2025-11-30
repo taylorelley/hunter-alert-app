@@ -39,7 +39,6 @@ describe('supabase api wrapper', () => {
     const drafts: MessageDraft[] = Array.from({ length: 3 }, (_, idx) => ({
       conversation_id: 'c1',
       body: `message-${idx}`,
-      author_id: 'user-1',
     }));
 
     await expect(sendBatch(client, drafts, 2)).rejects.toThrow('Batch too large');
@@ -50,14 +49,14 @@ describe('supabase api wrapper', () => {
     (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: ['ok'], error: null });
 
     const drafts: MessageDraft[] = [
-      { conversation_id: 'c1', body: '  hello  ', author_id: 'user-1' },
-      { conversation_id: 'c1', body: '   ', author_id: 'user-1' },
+      { conversation_id: 'c1', body: '  hello  ' },
+      { conversation_id: 'c1', body: '   ' },
     ];
 
     const result = await sendBatch(client, drafts, 5);
     expect(client.rpc).toHaveBeenCalledWith('send_message_batch', {
       messages: [
-        { conversation_id: 'c1', body: 'hello', author_id: 'user-1' },
+        { conversation_id: 'c1', body: 'hello' },
       ],
     });
     expect(result.data).toEqual(['ok']);
@@ -67,7 +66,7 @@ describe('supabase api wrapper', () => {
     const client = mockClient();
     (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [], error: null });
 
-    const drafts: MessageDraft[] = [{ conversation_id: 'c1', body: '   ', author_id: 'user-1' }];
+    const drafts: MessageDraft[] = [{ conversation_id: 'c1', body: '   ' }];
     const result = await sendBatch(client, drafts, 5);
 
     expect(client.rpc).not.toHaveBeenCalled();
@@ -79,11 +78,19 @@ describe('supabase api wrapper', () => {
     const conversations = [{ id: 1 }, { id: 2 }];
     const messages = [{ id: 1 }, { id: 2 }, { id: 3 }];
     const sync_cursors = [{ id: 1 }];
+    const groups = [{ id: 1 }];
+    const waypoints = [{ id: 1 }];
+    const geofences = [{ id: 1 }];
+    const profiles = [{ id: 1 }];
     (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         conversations,
         messages,
         sync_cursors,
+        groups,
+        waypoints,
+        geofences,
+        profiles,
       },
       error: null,
     });
@@ -93,6 +100,10 @@ describe('supabase api wrapper', () => {
       conversations: conversations.slice(0, 2),
       messages: messages.slice(0, 2),
       sync_cursors,
+      groups,
+      waypoints,
+      geofences,
+      profiles,
     });
   });
 

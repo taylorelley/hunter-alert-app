@@ -3,11 +3,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 import { Session, User } from "@supabase/supabase-js"
 import { createSupabaseClient } from "@/lib/supabase/client"
-import { authenticate } from "@/lib/supabase/api"
+import { authenticate, createGroup as apiCreateGroup, addWaypoint as apiAddWaypoint, createGeofence as apiCreateGeofence } from "@/lib/supabase/api"
 import { useNetwork } from "./network-provider"
 import { useSyncEngine } from "@/lib/sync/use-sync-engine"
 import { PendingAction } from "@/lib/sync/types"
-import { PullUpdatesResult } from "@/lib/supabase/types"
+import { PullUpdatesResult, Group as APIGroup, Waypoint as APIWaypoint, Geofence as APIGeofence, Profile as APIProfile } from "@/lib/supabase/types"
 
 export type TripStatus = "none" | "planning" | "active" | "paused" | "completed"
 export type CheckInStatus = "ok" | "pending" | "overdue"
@@ -56,7 +56,15 @@ interface Profile {
   id: string
   display_name: string
   avatar_url?: string | null
-  metadata?: Record<string, any>
+  email?: string | null
+  phone?: string | null
+  emergency_contacts: Array<{ name: string; phone: string; relationship?: string }>
+  is_premium: boolean
+  privacy_settings: {
+    shareLocation: boolean
+    showOnMap: boolean
+    notifyContacts: boolean
+  }
 }
 
 interface AppState {
@@ -85,7 +93,17 @@ interface AppContextValue extends AppState {
   startTrip: (trip: Omit<Trip, "id" | "checkIns" | "status">) => Promise<void>
   endTrip: () => Promise<void>
   checkIn: (status: "ok" | "need-help", notes: string) => Promise<void>
-  addWaypoint: (waypoint: Omit<Waypoint, "id" | "createdAt">) => void
+  addWaypoint: (waypoint: Omit<Waypoint, "id" | "createdAt">) => Promise<void>
+  createGroup: (name: string, description?: string) => Promise<void>
+  createGeofence: (params: {
+    name: string
+    latitude: number
+    longitude: number
+    radiusMeters?: number
+    description?: string
+    groupId?: string
+    conversationId?: string
+  }) => Promise<void>
   triggerSOS: (silent: boolean) => void
   cancelSOS: () => void
 }
@@ -134,9 +152,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [supabase] = useState(() => createSupabaseClient())
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
-  const [, setProfile] = useState<Profile | null>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
   const [conversations, setConversations] = useState<Record<string, any>[]>([])
   const [messages, setMessages] = useState<Record<string, any>[]>([])
+  const [backendGroups, setBackendGroups] = useState<APIGroup[]>([])
+  const [backendWaypoints, setBackendWaypoints] = useState<APIWaypoint[]>([])
+  const [backendGeofences, setBackendGeofences] = useState<APIGeofence[]>([])
   const [syncCursor, setSyncCursor] = useState<string | null>(null)
 
   const [state, setState] = useState<AppState>({
@@ -175,12 +196,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!supabase || !session) return
     const { data } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle()
     if (data) {
-      setProfile(data as Profile)
+      const profileData = data as unknown as Profile
+      setProfile(profileData)
       setState((prev) => ({
         ...prev,
-        userName: data.display_name || prev.userName,
-        isPremium: Boolean((data.metadata as any)?.isPremium),
-        emergencyContacts: ((data.metadata as any)?.emergencyContacts as AppState["emergencyContacts"]) || prev.emergencyContacts,
+        userName: profileData.display_name || prev.userName,
+        isPremium: Boolean(profileData.is_premium),
+        emergencyContacts: profileData.emergency_contacts || prev.emergencyContacts,
       }))
     }
   }, [session, supabase])
@@ -202,6 +224,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         return Array.from(byId.values())
       })
+
+      // Update groups, waypoints, and geofences from backend
+      if (result.groups && result.groups.length > 0) {
+        setBackendGroups(result.groups)
+      }
+      if (result.waypoints && result.waypoints.length > 0) {
+        setBackendWaypoints(result.waypoints)
+      }
+      if (result.geofences && result.geofences.length > 0) {
+        setBackendGeofences(result.geofences)
+      }
+
+      // Update profile if returned
+      if (result.profiles && result.profiles.length > 0) {
+        const profileData = result.profiles[0] as unknown as Profile
+        setProfile(profileData)
+        setState((prev) => ({
+          ...prev,
+          userName: profileData.display_name || prev.userName,
+          isPremium: Boolean(profileData.is_premium),
+          emergencyContacts: profileData.emergency_contacts || prev.emergencyContacts,
+        }))
+      }
     },
     [],
   )
@@ -366,10 +411,71 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [enqueue, session, state.currentTrip],
   )
 
-  const addWaypoint = useCallback((waypoint: Omit<Waypoint, "id" | "createdAt">) => {
-    const newWaypoint: Waypoint = { ...waypoint, id: uniqueId(), createdAt: new Date() }
-    setState((prev) => ({ ...prev, waypoints: [newWaypoint, ...prev.waypoints] }))
-  }, [])
+  const addWaypoint = useCallback(
+    async (waypoint: Omit<Waypoint, "id" | "createdAt">) => {
+      if (!session) throw new Error("Sign-in required to add waypoint")
+
+      try {
+        const result = await apiAddWaypoint(supabase, {
+          name: waypoint.name,
+          latitude: waypoint.coordinates.lat,
+          longitude: waypoint.coordinates.lng,
+          type: waypoint.type,
+          description: waypoint.notes,
+          tripId: state.currentTrip?.id,
+          shared: !waypoint.isPrivate,
+        })
+
+        // Optimistically update local state
+        setBackendWaypoints((prev) => [result, ...prev])
+        await flush() // Trigger sync to get latest data
+      } catch (error) {
+        console.error("Error adding waypoint:", error)
+        throw error
+      }
+    },
+    [flush, session, state.currentTrip?.id, supabase],
+  )
+
+  const createGroup = useCallback(
+    async (name: string, description?: string) => {
+      if (!session) throw new Error("Sign-in required to create group")
+
+      try {
+        const result = await apiCreateGroup(supabase, name, description)
+        setBackendGroups((prev) => [result, ...prev])
+        await flush() // Trigger sync to get latest data
+      } catch (error) {
+        console.error("Error creating group:", error)
+        throw error
+      }
+    },
+    [flush, session, supabase],
+  )
+
+  const createGeofence = useCallback(
+    async (params: {
+      name: string
+      latitude: number
+      longitude: number
+      radiusMeters?: number
+      description?: string
+      groupId?: string
+      conversationId?: string
+    }) => {
+      if (!session) throw new Error("Sign-in required to create geofence")
+
+      try {
+        const result = await apiCreateGeofence(supabase, params)
+        setBackendGeofences((prev) => [result, ...prev])
+        await flush() // Trigger sync to get latest data
+      } catch (error) {
+        console.error("Error creating geofence:", error)
+        throw error
+      }
+    },
+    [flush, session, supabase],
+  )
 
   const triggerSOS = useCallback((silent: boolean) => {
     console.warn(`SOS triggered (${silent ? "silent" : "full"})`)
@@ -379,6 +485,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const cancelSOS = useCallback(() => {
     setState((prev) => ({ ...prev, sosActive: false }))
   }, [])
+
+  // Convert backend waypoints and groups to UI format
+  useEffect(() => {
+    // Convert backend waypoints to UI format
+    const uiWaypoints: Waypoint[] = backendWaypoints.map((wp) => ({
+      id: wp.id,
+      name: wp.name,
+      type: wp.waypoint_type as Waypoint["type"],
+      coordinates: { lat: wp.latitude, lng: wp.longitude },
+      notes: wp.description || "",
+      isPrivate: !wp.shared,
+      createdAt: new Date(wp.created_at),
+    }))
+
+    // Convert backend groups to UI format
+    const uiGroups: Group[] = backendGroups.map((g) => ({
+      id: g.id,
+      name: g.name,
+      description: g.description || "",
+      members: g.member_ids.map((id, index) => ({
+        id,
+        name: id === g.owner_id ? "Owner" : `Member ${index + 1}`,
+        role: id === g.owner_id ? "owner" : "member",
+      })),
+      waypoints: [], // Waypoints are managed separately
+    }))
+
+    setState((prev) => ({
+      ...prev,
+      waypoints: uiWaypoints,
+      groups: uiGroups,
+    }))
+  }, [backendWaypoints, backendGroups])
 
   const contextValue = useMemo<AppContextValue>(
     () => ({
@@ -395,10 +534,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       endTrip,
       checkIn,
       addWaypoint,
+      createGroup,
+      createGeofence,
       triggerSOS,
       cancelSOS,
     }),
-    [addWaypoint, cancelSOS, checkIn, endTrip, lastSyncedAt, pending, refresh, session, signIn, signOut, startTrip, state, status, user],
+    [addWaypoint, cancelSOS, checkIn, createGeofence, createGroup, endTrip, lastSyncedAt, pending, refresh, session, signIn, signOut, startTrip, state, status, user],
   )
 
   return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>

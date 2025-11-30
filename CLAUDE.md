@@ -32,6 +32,8 @@ This is **Hunter Alert**, a production-ready mobile-first application built with
 │   ├── supabase/          # Backend API (client.ts, api.ts, types.ts)
 │   ├── sync/              # Sync engine (use-sync-engine.ts, pending-actions.ts, types.ts)
 │   ├── offline/           # Network state machine (stateMachine.ts)
+│   ├── geolocation.ts     # Geolocation utilities (Capacitor Geolocation wrapper)
+│   ├── weather.ts         # Weather API integration (OpenWeatherMap)
 │   └── utils.ts           # Tailwind merge helper
 ├── backend/               # Supabase configuration
 │   ├── supabase/
@@ -133,14 +135,106 @@ Supabase RPC functions minimize round trips:
 - Returns inserted messages with server timestamps
 
 **pull_updates(since timestamptz)**
-- Returns all updates since cursor (conversations, messages, sync_cursors)
+- Returns all updates since cursor (conversations, messages, sync_cursors, groups, waypoints, geofences, profiles)
 - Max 100 rows per collection (configurable)
 - Ordered by `updated_at`/`created_at`
 
 **API Wrapper** (`lib/supabase/api.ts`):
 - `authenticate(client, email, password)` - Sign in
 - `sendBatch(client, drafts, maxBatchSize)` - Send message batch
-- `pullUpdates(client, since, maxRows)` - Pull updates
+- `pullUpdates(client, since, maxRows)` - Pull updates including all entity types
+- `createGroup(client, name, description)` - Create group
+- `joinGroup(client, groupId)` - Join existing group
+- `addWaypoint(client, params)` - Add waypoint with optional trip/group association
+- `createGeofence(client, params)` - Create geofence
+- `toggleGeofence(client, geofenceId, enabled)` - Enable/disable geofence
+- `deleteWaypoint/deleteGeofence(client, id)` - Delete entities
+
+### 5. Geolocation Integration
+
+**Capacitor Geolocation** (`lib/geolocation.ts`):
+- Unified API for GPS across web/Android/iOS
+- Permission handling (check, request)
+- `getCurrentPosition(options)` - Get current coordinates
+- `watchPosition(callback, errorCallback, options)` - Monitor location changes
+- `calculateDistance(lat1, lon1, lat2, lon2)` - Haversine distance calculation
+- `isWithinGeofence(lat, lon, fenceLat, fenceLon, radius)` - Geofence detection
+
+**Usage:**
+```typescript
+import { getCurrentPosition, watchPosition } from "@/lib/geolocation"
+
+// Get current position
+const coords = await getCurrentPosition()
+console.log(coords.latitude, coords.longitude)
+
+// Watch position
+const watchId = await watchPosition((coords) => {
+  console.log("Position update:", coords)
+})
+```
+
+**Key Features:**
+- Automatic permission requests
+- Error handling with fallbacks
+- High accuracy mode enabled by default
+- Platform-agnostic API
+
+### 6. Weather API Integration
+
+**OpenWeatherMap Integration** (`lib/weather.ts`):
+- Real-time weather data by coordinates or city
+- Falls back to mock data if API key not configured
+- Configurable via `NEXT_PUBLIC_WEATHER_API_KEY` environment variable
+
+**Functions:**
+- `getWeatherByCoordinates(lat, lon)` - Fetch weather for coordinates
+- `getWeatherByCity(city)` - Fetch weather by city name
+- `formatCondition(condition)` - Format weather condition for display
+- `getWeatherIconUrl(icon, size)` - Get icon URL from OpenWeatherMap
+- `isWeatherApiConfigured()` - Check if API key is set
+
+**Usage:**
+```typescript
+import { getWeatherByCoordinates } from "@/lib/weather"
+
+const weather = await getWeatherByCoordinates(43.8, -103.5)
+console.log(`${weather.temperature}°F ${weather.condition}`)
+console.log(`Wind: ${weather.windSpeed}mph, Humidity: ${weather.humidity}%`)
+```
+
+**Data Returned:**
+- Temperature (Fahrenheit and Celsius)
+- Condition and description
+- Humidity percentage
+- Wind speed (mph and km/h)
+- Sunrise/sunset times
+- Location name
+
+### 7. Enhanced Database Schema
+
+**Complete Schema** (`backend/supabase/migrations/0001_init.sql`):
+
+**Tables:**
+1. `profiles` - User profiles with emergency contacts, premium status, privacy settings
+2. `conversations` - Trips/conversations with participant arrays
+3. `messages` - Check-ins and communications
+4. `sync_cursors` - Per-user sync progress
+5. `groups` - User groups with owner and member arrays
+6. `waypoints` - GPS waypoints with type, sharing, trip association
+7. `geofences` - Geographic boundaries with entry/exit notifications
+
+**Row-Level Security:**
+- All tables have RLS enabled
+- Users access only their data and shared resources
+- Groups: owner + members can access
+- Waypoints: owner + shared waypoints in user's trips
+- Geofences: owner + members of associated group/trip
+
+**Indexes:**
+- Optimized for common queries (user_id, conversation_id, group_id)
+- Updated_at indexes for sync operations
+- Composite indexes for enabled geofences
 
 ---
 

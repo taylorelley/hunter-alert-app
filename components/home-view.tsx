@@ -14,11 +14,18 @@ import {
   ChevronRight,
   Star,
   Zap,
+  Cloud,
+  CloudDrizzle,
+  CloudSnow,
+  CloudLightning,
+  Droplets,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useApp } from "./app-provider"
 import { cn } from "@/lib/utils"
+import { getCurrentPosition, type Coordinates } from "@/lib/geolocation"
+import { getWeatherByCoordinates, type WeatherData, formatCondition } from "@/lib/weather"
 
 interface HomeViewProps {
   onNavigate: (tab: string) => void
@@ -30,6 +37,9 @@ interface HomeViewProps {
 export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: HomeViewProps) {
   const { currentTrip, nextCheckInDue, checkInStatus, isPremium, waypoints } = useApp()
   const [timeRemaining, setTimeRemaining] = useState("")
+  const [location, setLocation] = useState<Coordinates | null>(null)
+  const [weather, setWeather] = useState<WeatherData | null>(null)
+  const [weatherLoading, setWeatherLoading] = useState(true)
 
   useEffect(() => {
     if (!nextCheckInDue) return
@@ -57,6 +67,59 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
     const interval = setInterval(updateTimer, 1000)
     return () => clearInterval(interval)
   }, [nextCheckInDue])
+
+  // Fetch location and weather on mount
+  useEffect(() => {
+    let mounted = true
+    const fetchLocationAndWeather = async () => {
+      try {
+        setWeatherLoading(true)
+        const coords = await getCurrentPosition()
+        if (!mounted) return
+        setLocation(coords)
+
+        // Fetch weather using location
+        const weatherData = await getWeatherByCoordinates(coords.latitude, coords.longitude)
+        if (!mounted) return
+        setWeather(weatherData)
+      } catch (error) {
+        console.error("Error fetching location/weather:", error)
+        // Fall back to default weather (mock data)
+        const weatherData = await getWeatherByCoordinates(43.8, -103.5) // Black Hills, SD
+        if (!mounted) return
+        setWeather(weatherData)
+      } finally {
+        if (mounted) {
+          setWeatherLoading(false)
+        }
+      }
+    }
+
+    fetchLocationAndWeather()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  // Get weather icon based on condition
+  const getWeatherIcon = (condition: string) => {
+    const cond = condition.toLowerCase()
+    if (cond.includes("clear") || cond.includes("sun")) return Sun
+    if (cond.includes("cloud")) return Cloud
+    if (cond.includes("rain")) return CloudRain
+    if (cond.includes("drizzle")) return CloudDrizzle
+    if (cond.includes("snow")) return CloudSnow
+    if (cond.includes("storm") || cond.includes("thunder")) return CloudLightning
+    if (cond.includes("mist") || cond.includes("fog") || cond.includes("haze")) return Cloud
+    return Sun
+  }
+
+  // Format time from Unix timestamp
+  const formatTime = (timestamp?: number) => {
+    if (!timestamp) return ""
+    const date = new Date(timestamp * 1000)
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+  }
 
   return (
     <div className="flex-1 overflow-y-auto pb-24">
@@ -167,31 +230,52 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
         {/* Weather Strip */}
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/20">
-                  <Sun className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <p className="font-semibold">72°F Clear</p>
-                  <p className="text-sm text-muted-foreground">Black Hills, SD</p>
-                </div>
+            {weatherLoading ? (
+              <div className="flex items-center justify-center p-4">
+                <p className="text-sm text-muted-foreground">Loading weather...</p>
               </div>
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <CloudRain className="w-4 h-4" />
-                  <span>5%</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Wind className="w-4 h-4" />
-                  <span>8mph</span>
-                </div>
+            ) : weather ? (
+              <>
+                {(() => {
+                  const WeatherIcon = getWeatherIcon(weather.condition)
+                  return (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-primary/20">
+                          <WeatherIcon className="w-6 h-6 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-semibold">{weather.temperature}°F {formatCondition(weather.condition)}</p>
+                          <p className="text-sm text-muted-foreground">{weather.location}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1" title="Humidity">
+                          <Droplets className="w-4 h-4" />
+                          <span>{weather.humidity}%</span>
+                        </div>
+                        <div className="flex items-center gap-1" title="Wind Speed">
+                          <Wind className="w-4 h-4" />
+                          <span>{weather.windSpeed}mph</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
+                {weather.sunrise && weather.sunset && (
+                  <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Sunrise {formatTime(weather.sunrise)} • Sunset {formatTime(weather.sunset)}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center justify-center p-4">
+                <p className="text-sm text-muted-foreground">Weather unavailable</p>
               </div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Sunrise 6:42 AM • Sunset 7:18 PM</span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </div>
+            )}
           </CardContent>
         </Card>
 

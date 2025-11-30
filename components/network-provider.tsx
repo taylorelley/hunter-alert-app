@@ -86,7 +86,7 @@ const NetworkContext = createContext<NetworkContextValue | null>(null)
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<NetworkState>(DEFAULT_STATE)
-  const refreshRef = useRef<() => void>()
+  const refreshRef = useRef<(() => void) | undefined>(undefined)
 
   const refresh = useCallback(() => {
     computeNetworkState().then(setState)

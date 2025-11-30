@@ -11,11 +11,17 @@ export function createSupabaseClient(config: SupabaseClientConfig = {}): Supabas
   const supabaseKey =
     config.supabaseKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseKey) {
+  // During build time (SSR/SSG), use placeholder values for static export
+  // These will be replaced with actual values at runtime in the browser
+  const isBuildTime = typeof window === 'undefined';
+  const finalUrl = supabaseUrl || (isBuildTime ? 'https://placeholder.supabase.co' : '');
+  const finalKey = supabaseKey || (isBuildTime ? 'placeholder-anon-key' : '');
+
+  if (!finalUrl || !finalKey) {
     throw new Error('Supabase URL and anon key are required to initialize the client');
   }
 
-  return createClient(supabaseUrl, supabaseKey, {
+  return createClient(finalUrl, finalKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
