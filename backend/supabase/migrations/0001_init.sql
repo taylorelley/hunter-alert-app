@@ -52,7 +52,8 @@ create table if not exists groups (
   member_ids uuid[] not null default array[]::uuid[],
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint chk_groups_owner_is_member check (owner_id = any(member_ids))
 );
 
 create table if not exists waypoints (
@@ -481,6 +482,10 @@ begin
   end if;
 
   select owner_id into group_owner from groups where id = group_id;
+
+  if group_owner is null then
+    raise exception 'Group not found';
+  end if;
 
   if group_owner = auth.uid() then
     raise exception 'Owner cannot leave group. Delete the group instead.';

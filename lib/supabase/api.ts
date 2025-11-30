@@ -55,6 +55,18 @@ export async function sendBatch(
   return { data, error: null };
 }
 
+/**
+ * Pull updates from the server since the given timestamp.
+ *
+ * Note: maxRows is applied independently to each entity type (conversations, messages,
+ * sync_cursors, groups, waypoints, geofences, profiles), so the total response may
+ * contain up to 7× maxRows entities across all collections.
+ *
+ * @param client - Supabase client
+ * @param since - ISO timestamp of last sync, or null for initial sync
+ * @param maxRows - Maximum rows per entity type (default: 100)
+ * @returns Object containing arrays of updated entities
+ */
 export async function pullUpdates(
   client: SupabaseClient,
   since?: string | null,
@@ -150,6 +162,9 @@ export async function addWaypoint(
   },
 ): Promise<Waypoint> {
   // Client-side validation
+  if (!params.name.trim()) {
+    throw new Error('Waypoint name cannot be empty');
+  }
   if (params.latitude < -90 || params.latitude > 90) {
     throw new Error('Latitude must be between -90 and 90');
   }
@@ -200,14 +215,20 @@ export async function createGeofence(
   },
 ): Promise<Geofence> {
   // Client-side validation
+  if (!params.name.trim()) {
+    throw new Error('Geofence name cannot be empty');
+  }
   if (params.latitude < -90 || params.latitude > 90) {
     throw new Error('Latitude must be between -90 and 90');
   }
   if (params.longitude < -180 || params.longitude > 180) {
     throw new Error('Longitude must be between -180 and 180');
   }
-  if (params.radiusMeters !== undefined && params.radiusMeters <= 0) {
-    throw new Error('Radius must be greater than 0');
+  if (
+    params.radiusMeters !== undefined &&
+    (params.radiusMeters <= 0 || params.radiusMeters > 100000)
+  ) {
+    throw new Error('Radius must be between 1 and 100000 meters');
   }
 
   const { data, error } = await client.rpc('create_geofence', {
