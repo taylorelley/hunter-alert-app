@@ -163,42 +163,47 @@ For local testing before deployment, set these in `.env.local` (see [Frontend de
 
 1. **Generate signing key**:
    ```bash
-   keytool -genkey -v -keystore hunter-alert.keystore \
+   # Generate a release keystore (if you don't have one)
+   keytool -genkey -v -keystore release.keystore \
      -alias hunter-alert -keyalg RSA -keysize 2048 -validity 10000
-   # Place the generated keystore at the repository root: hunter-alert.keystore
+
+   # IMPORTANT: Keep this keystore file secure and NEVER commit it to git!
+   # Store it in a safe location outside the repository
    ```
 
-2. **Set up environment variables**:
-   For local builds, set these before running gradle:
+2. **Configure signing for local builds**:
+
+   Create `android/gradle.properties` (ignored by git) with:
+   ```properties
+   RELEASE_KEYSTORE_FILE=/path/to/your/release.keystore
+   RELEASE_KEYSTORE_PASSWORD=your-keystore-password
+   RELEASE_KEY_ALIAS=hunter-alert
+   RELEASE_KEY_PASSWORD=your-key-password
+   ```
+
+3. **Configure GitHub Actions for automated builds**:
+
+   The APK signing is already configured in `build.gradle`. To enable signed APK builds in GitHub Actions:
+
+   a. **Encode your keystore to base64**:
    ```bash
-   export KEYSTORE_PASSWORD="your-keystore-password"
-   export KEY_PASSWORD="your-key-password"
-   ```
-   For CI/CD (e.g., GitHub Actions), store these as secrets in your platform (Settings > Secrets).
-
-3. **Configure signing** in `android/app/build.gradle`:
-   ```gradle
-   android {
-       ...
-       signingConfigs {
-           release {
-               storeFile file("../../hunter-alert.keystore")
-               storePassword System.getenv("KEYSTORE_PASSWORD")
-               keyAlias "hunter-alert"
-               keyPassword System.getenv("KEY_PASSWORD")
-           }
-       }
-       buildTypes {
-           release {
-               signingConfig signingConfigs.release
-               minifyEnabled true
-               proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-           }
-       }
-   }
+   base64 -i release.keystore -o keystore.txt
+   # Copy the contents of keystore.txt
    ```
 
-4. **Build release AAB**:
+   b. **Add GitHub Secrets** (Repository Settings → Secrets and variables → Actions):
+   - `RELEASE_KEYSTORE_BASE64`: Paste the base64-encoded keystore content
+   - `RELEASE_KEYSTORE_PASSWORD`: Your keystore password
+   - `RELEASE_KEY_ALIAS`: `hunter-alert` (or your chosen alias)
+   - `RELEASE_KEY_PASSWORD`: Your key password
+
+   c. **Existing secrets** (already required):
+   - `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase anonymous key
+
+   Once configured, GitHub Actions will automatically build and sign APKs on push to `main`.
+
+4. **Build release APK/AAB locally**:
    ```bash
    # Build web app with production config
    pnpm build

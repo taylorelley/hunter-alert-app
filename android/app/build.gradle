@@ -16,8 +16,30 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
+    signingConfigs {
+        release {
+            // Load keystore from environment variables (CI) or local properties file
+            if (System.getenv('RELEASE_KEYSTORE_FILE')) {
+                storeFile file(System.getenv('RELEASE_KEYSTORE_FILE'))
+                storePassword System.getenv('RELEASE_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('RELEASE_KEY_ALIAS')
+                keyPassword System.getenv('RELEASE_KEY_PASSWORD')
+            } else if (project.hasProperty('RELEASE_KEYSTORE_FILE')) {
+                storeFile file(project.property('RELEASE_KEYSTORE_FILE'))
+                storePassword project.property('RELEASE_KEYSTORE_PASSWORD')
+                keyAlias project.property('RELEASE_KEY_ALIAS')
+                keyPassword project.property('RELEASE_KEY_PASSWORD')
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // Sign the release APK if keystore is configured
+            if (signingConfigs.release.storeFile?.exists()) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
