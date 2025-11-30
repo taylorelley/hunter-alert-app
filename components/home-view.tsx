@@ -39,7 +39,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
   const [timeRemaining, setTimeRemaining] = useState("")
   const [location, setLocation] = useState<Coordinates | null>(null)
   const [weather, setWeather] = useState<WeatherData | null>(null)
-  const [weatherLoading, setWeatherLoading] = useState(false)
+  const [weatherLoading, setWeatherLoading] = useState(true)
 
   useEffect(() => {
     if (!nextCheckInDue) return

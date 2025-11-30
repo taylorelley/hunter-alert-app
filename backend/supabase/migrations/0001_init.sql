@@ -231,6 +231,33 @@ create policy groups_update on groups
 for update using (owner_id = auth.uid() or auth.uid() = any(member_ids))
 with check (owner_id = auth.uid() or auth.uid() = any(member_ids));
 
+-- Allow users to join groups (add themselves to member_ids)
+create policy groups_join on groups
+for update using (
+  -- User is not already a member
+  auth.uid() is not null
+  and not (auth.uid() = any(member_ids))
+)
+with check (
+  -- User is being added to member_ids
+  auth.uid() = any(member_ids)
+);
+
+-- Allow users to leave groups (remove themselves from member_ids)
+create policy groups_leave on groups
+for update using (
+  -- User is currently a member but not the owner
+  auth.uid() is not null
+  and auth.uid() = any(member_ids)
+  and owner_id != auth.uid()
+)
+with check (
+  -- User has been removed from member_ids
+  not (auth.uid() = any(member_ids))
+  or owner_id = auth.uid()  -- Owner can still update
+  or auth.uid() = any(member_ids)  -- Or user is still a member (for other updates)
+);
+
 create policy groups_delete on groups
 for delete using (owner_id = auth.uid());
 
