@@ -187,7 +187,12 @@ For local testing before deployment, set these in `.env.local` (see [Frontend de
 
    a. **Encode your keystore to base64**:
    ```bash
+   # Linux
+   base64 -w 0 release.keystore > keystore.txt
+
+   # macOS
    base64 -i release.keystore -o keystore.txt
+
    # Copy the contents of keystore.txt
    ```
 
