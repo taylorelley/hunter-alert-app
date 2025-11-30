@@ -61,13 +61,14 @@ create table if not exists waypoints (
   user_id uuid not null references profiles (id) on delete cascade,
   name text not null,
   description text,
-  latitude double precision not null,
-  longitude double precision not null,
+  latitude double precision not null check (latitude >= -90 and latitude <= 90),
+  longitude double precision not null check (longitude >= -180 and longitude <= 180),
   waypoint_type text not null default 'custom' check (waypoint_type in ('stand', 'camera', 'camp', 'vehicle', 'water', 'landmark', 'custom')),
   shared boolean not null default false,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint chk_waypoints_shared_conv check (shared = false or conversation_id is not null)
 );
 
 create table if not exists geofences (
@@ -77,9 +78,9 @@ create table if not exists geofences (
   user_id uuid not null references profiles (id) on delete cascade,
   name text not null,
   description text,
-  latitude double precision not null,
-  longitude double precision not null,
-  radius_meters int not null default 500,
+  latitude double precision not null check (latitude >= -90 and latitude <= 90),
+  longitude double precision not null check (longitude >= -180 and longitude <= 180),
+  radius_meters int not null default 500 check (radius_meters > 0),
   enabled boolean not null default true,
   notify_on_entry boolean not null default true,
   notify_on_exit boolean not null default true,
