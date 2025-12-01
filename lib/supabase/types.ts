@@ -123,6 +123,21 @@ export interface Profile {
   updated_at: string;
 }
 
+export interface DeviceSession {
+  id: string;
+  user_id: string;
+  client_session_id: string;
+  device_model: string | null;
+  platform: string | null;
+  os_version: string | null;
+  app_version: string | null;
+  metadata: Record<string, unknown>;
+  last_seen: string;
+  revoked_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PullUpdatesResult {
   conversations: Record<string, unknown>[];
   messages: Record<string, unknown>[];
@@ -133,6 +148,7 @@ export interface PullUpdatesResult {
   waypoints: Waypoint[];
   geofences: Geofence[];
   profiles: Profile[];
+  device_sessions: DeviceSession[];
 }
 
 export interface AuthResult {

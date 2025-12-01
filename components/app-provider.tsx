@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Session, User } from "@supabase/supabase-js"
 import { createSupabaseClient } from "@/lib/supabase/client"
 import {
@@ -14,6 +14,9 @@ import {
   leaveGroup as apiLeaveGroup,
   toggleGeofence as apiToggleGeofence,
   updateGeofenceAlerts as apiUpdateGeofenceAlerts,
+  recordDeviceSession,
+  revokeDeviceSession as apiRevokeDeviceSession,
+  listDeviceSessions,
 } from "@/lib/supabase/api"
 import { useNetwork } from "./network-provider"
 import { useSyncEngine } from "@/lib/sync/use-sync-engine"
@@ -28,7 +31,11 @@ import {
   GroupInvitation as APIGroupInvitation,
   GroupActivity as APIGroupActivity,
   MessageDraft,
+  DeviceSession,
 } from "@/lib/supabase/types"
+import { Device } from "@capacitor/device"
+import { persistCachedDeviceSessions, readCachedDeviceSessions } from "@/lib/storage/device-sessions"
+import { getClientSessionId } from "@/lib/device/session-id"
 
 export type TripStatus = "none" | "planning" | "active" | "paused" | "completed"
 export type CheckInStatus = "ok" | "pending" | "overdue"
@@ -80,6 +87,17 @@ export interface MemberLocation {
   accuracy: number | undefined
   heading: number | null
   updatedAt: string
+}
+
+export interface DeviceSessionView {
+  id: string
+  label: string
+  platform: string
+  osVersion: string
+  appVersion?: string | null
+  lastSeen: Date
+  revokedAt: Date | null
+  isCurrent: boolean
 }
 
 export interface Geofence {
@@ -156,6 +174,8 @@ interface AppState {
   geofences: Geofence[]
   groupInvitations: GroupInvitation[]
   groupActivity: GroupActivity[]
+  deviceSessions: DeviceSessionView[]
+  currentDevice: DeviceSessionView | null
   checkInStatus: CheckInStatus
   nextCheckInDue: Date | null
   sosActive: boolean
@@ -172,9 +192,12 @@ interface AppContextValue extends AppState {
   pendingActions: PendingAction[]
   syncStatus: string
   lastSyncedAt: string | null
+  deviceSessionId: string | null
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   refresh: () => Promise<void>
+  refreshDeviceSessions: () => Promise<void>
+  revokeDeviceSession: (sessionId: string) => Promise<void>
   startTrip: (trip: Omit<Trip, "id" | "checkIns" | "status">) => Promise<void>
   updateTrip: (tripId: string, trip: Omit<Trip, "id" | "checkIns">) => Promise<void>
   endTrip: () => Promise<void>
@@ -222,6 +245,66 @@ function mergeRecords<T extends { id?: string }>(current: T[], incoming: T[]): T
     map.set(key, { ...(map.get(key) ?? {}), ...item })
   })
   return Array.from(map.values())
+}
+
+async function getDeviceDescriptor() {
+  if (typeof window === "undefined") {
+    return {
+      model: "server",
+      platform: "server",
+      osVersion: "",
+      appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? null,
+      metadata: {},
+    }
+  }
+
+  try {
+    const info = await Device.getInfo()
+    return {
+      model: info.model || info.name || "Unknown device",
+      platform: info.platform || info.operatingSystem || "unknown",
+      osVersion: info.osVersion || info.operatingSystem || "",
+      appVersion: process.env.NEXT_PUBLIC_APP_VERSION || null,
+      metadata: {
+        manufacturer: info.manufacturer,
+        platform: info.platform,
+        operatingSystem: info.operatingSystem,
+      },
+    }
+  } catch (error) {
+    console.warn("Unable to collect device info", error)
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "unknown"
+    return {
+      model: "Web Client",
+      platform: "web",
+      osVersion: ua,
+      appVersion: process.env.NEXT_PUBLIC_APP_VERSION || null,
+      metadata: {},
+    }
+  }
+}
+
+function mapDeviceSessionsToView(
+  sessions: DeviceSession[],
+  currentSessionId: string | null,
+): DeviceSessionView[] {
+  return sessions
+    .map((session) => {
+      const lastSeen = parseDate(session.last_seen || session.updated_at || session.created_at, new Date())
+      const revokedAt = session.revoked_at ? parseDate(session.revoked_at, new Date()) : null
+
+      return {
+        id: session.id,
+        label: session.device_model || "Unknown device",
+        platform: session.platform || "unknown",
+        osVersion: session.os_version || "",
+        appVersion: session.app_version,
+        lastSeen,
+        revokedAt,
+        isCurrent: session.client_session_id === currentSessionId,
+      }
+    })
+    .sort((a, b) => b.lastSeen.getTime() - a.lastSeen.getTime())
 }
 
 function normalizeSOSMetadata(message: MessageRecord): {
@@ -320,7 +403,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [backendWaypoints, setBackendWaypoints] = useState<APIWaypoint[]>([])
   const [backendGeofences, setBackendGeofences] = useState<APIGeofence[]>([])
   const [backendProfiles, setBackendProfiles] = useState<APIProfile[]>([])
+  const [backendDeviceSessions, setBackendDeviceSessions] = useState<DeviceSession[]>([])
   const [syncCursor, setSyncCursor] = useState<string | null>(null)
+  const [deviceSessionId] = useState<string | null>(() => (typeof window === "undefined" ? null : getClientSessionId()))
+  const revocationCheckRef = useRef(false)
 
   const [state, setState] = useState<AppState>({
     isOnline: network.connectivity !== "offline",
@@ -333,6 +419,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     geofences: [],
     groupInvitations: [],
     groupActivity: [],
+    deviceSessions: [],
+    currentDevice: null,
     checkInStatus: "pending",
     nextCheckInDue: null,
     sosActive: false,
@@ -341,6 +429,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     userName: "Guest",
     emergencyContacts: [],
   })
+
+  useEffect(() => {
+    readCachedDeviceSessions().then((cached) => {
+      if (cached.length) {
+        setBackendDeviceSessions((prev) => (prev.length ? prev : cached))
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    persistCachedDeviceSessions(backendDeviceSessions)
+  }, [backendDeviceSessions])
 
   const captureSOSLocation = useCallback(async (): Promise<SOSLocation | null> => {
     try {
@@ -356,13 +456,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.lastSOSLocation])
 
+  const refreshDeviceSessions = useCallback(async () => {
+    if (!session) return
+    try {
+      const records = await listDeviceSessions(supabase)
+      setBackendDeviceSessions((prev) => mergeRecords(prev, records))
+    } catch (error) {
+      console.warn("Unable to refresh device sessions:", error)
+    }
+  }, [session, supabase])
+
+  const upsertDeviceSession = useCallback(
+    async (activeSession?: Session | null) => {
+      const workingSession = activeSession ?? session
+      if (!supabase || !workingSession || !deviceSessionId) return
+
+      try {
+        const descriptor = await getDeviceDescriptor()
+        const record = await recordDeviceSession(supabase, {
+          client_session_id: deviceSessionId,
+          device_model: descriptor.model,
+          platform: descriptor.platform,
+          os_version: descriptor.osVersion,
+          app_version: descriptor.appVersion,
+          metadata: descriptor.metadata,
+        })
+        setBackendDeviceSessions((prev) => mergeRecords(prev, [record]))
+      } catch (error) {
+        console.warn("Unable to record device session", error)
+      }
+    },
+    [deviceSessionId, session, supabase],
+  )
+
+  const revokeDeviceSession = useCallback(
+    async (targetId: string) => {
+      if (!session) throw new Error("Sign-in required to revoke device session")
+      const record = await apiRevokeDeviceSession(supabase, targetId)
+      setBackendDeviceSessions((prev) => mergeRecords(prev, [record]))
+    },
+    [session, supabase],
+  )
+
   const signIn = useCallback(
     async (email: string, password: string) => {
       const result = await authenticate(supabase, email, password)
       setSession(result.session)
       setUser(result.user)
+      revocationCheckRef.current = false
+      await upsertDeviceSession(result.session)
+      await refreshDeviceSessions()
     },
-    [supabase],
+    [refreshDeviceSessions, supabase, upsertDeviceSession],
   )
 
   const signOut = useCallback(async () => {
@@ -378,6 +523,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBackendWaypoints([])
     setBackendGeofences([])
     setBackendProfiles([])
+    setBackendDeviceSessions([])
+    persistCachedDeviceSessions([])
+    revocationCheckRef.current = false
   }, [supabase])
 
   const refreshProfile = useCallback(async () => {
@@ -419,6 +567,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBackendGroupActivity((prev) => mergeRecords(prev, result.group_activity ?? []))
       setBackendWaypoints((prev) => mergeRecords(prev, result.waypoints ?? []))
       setBackendGeofences((prev) => mergeRecords(prev, result.geofences ?? []))
+      setBackendDeviceSessions((prev) => mergeRecords(prev, result.device_sessions ?? []))
 
       if (result.profiles && result.profiles.length > 0) {
         setBackendProfiles((prev) => mergeRecords(prev, result.profiles as APIProfile[]))
@@ -495,8 +644,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     await refreshProfile()
+    await refreshDeviceSessions()
     await flush()
-  }, [flush, refreshProfile])
+  }, [flush, refreshDeviceSessions, refreshProfile])
+
+  useEffect(() => {
+    if (!deviceSessionId || !session) return
+    const matching = backendDeviceSessions.find((entry) => entry.client_session_id === deviceSessionId)
+    if (matching?.revoked_at && !revocationCheckRef.current) {
+      revocationCheckRef.current = true
+      signOut()
+    }
+  }, [backendDeviceSessions, deviceSessionId, session, signOut])
 
   useEffect(() => {
     setState((prev) => ({ ...prev, isOnline: network.connectivity !== "offline" }))
@@ -507,9 +666,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (data.session) {
         setSession(data.session)
         setUser(data.session.user)
+        upsertDeviceSession(data.session)
+        refreshDeviceSessions()
       }
     })
-  }, [supabase])
+  }, [refreshDeviceSessions, supabase, upsertDeviceSession])
 
   useEffect(() => {
     if (user && session) {
@@ -1090,6 +1251,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }))
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 
+    const deviceSessionViews = mapDeviceSessionsToView(backendDeviceSessions, deviceSessionId)
+    const currentDevice = deviceSessionViews.find((entry) => entry.isCurrent) ?? null
+
     setState((prev) => ({
       ...prev,
       waypoints: uiWaypoints,
@@ -1098,6 +1262,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       geofences: uiGeofences,
       groupInvitations: uiInvitations,
       groupActivity: uiActivity,
+      deviceSessions: deviceSessionViews,
+      currentDevice,
     }))
   }, [
     backendWaypoints,
@@ -1106,6 +1272,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     backendProfiles,
     backendGroupInvitations,
     backendGroupActivity,
+    backendDeviceSessions,
+    deviceSessionId,
     session?.user?.id,
   ])
 
@@ -1118,6 +1286,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pendingActions: pending,
       syncStatus: status,
       lastSyncedAt,
+      deviceSessionId,
+      refreshDeviceSessions,
+      revokeDeviceSession,
       signIn,
       signOut,
       refresh,
@@ -1155,6 +1326,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleGeofenceAlerts,
       updateGeofenceAlerts,
       refresh,
+      refreshDeviceSessions,
       session,
       signIn,
       signOut,
@@ -1162,6 +1334,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateTrip,
       state,
       status,
+      deviceSessionId,
+      revokeDeviceSession,
       user,
       triggerSOS,
       resolveSOS,
