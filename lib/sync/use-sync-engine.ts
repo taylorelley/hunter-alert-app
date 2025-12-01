@@ -69,15 +69,24 @@ export function useSyncEngine({
     setStatus(pending.length > 0 ? "sending" : "pulling")
 
     try {
-      const sendable = pending.filter((action) => action.type === "SEND_MESSAGE")
+      const sendable = pending.filter(
+        (action) => action.type === "SEND_MESSAGE" || action.type === "SEND_ALERT",
+      )
       if (sendable.length > 0) {
-        const drafts: MessageDraft[] = sendable.map((action) => {
-          if (isMessageDraft(action.payload)) {
-            return { ...action.payload, client_id: action.id }
+        const invalidActionIds: string[] = []
+        const validSendable = sendable.filter((action): action is PendingAction & { payload: MessageDraft } => {
+          if (!isMessageDraft(action.payload)) {
+            console.warn(`Invalid payload for action ${action.id}, skipping`)
+            invalidActionIds.push(action.id)
+            return false
           }
-
-          return { conversation_id: "", body: "", client_id: action.id }
+          return true
         })
+
+        if (invalidActionIds.length > 0) {
+          const invalidSet = new Set(invalidActionIds)
+          setPending((current) => current.filter((action) => !invalidSet.has(action.id)))
+        }
 
         const constrainedBatch = Math.min(
           SYNC_LIMITS.backendMaxMessageBatch.value,
@@ -87,11 +96,20 @@ export function useSyncEngine({
               ? SYNC_LIMITS.syncSatelliteBatchLimit.value
               : SYNC_LIMITS.syncNormalBatchLimit.value,
         )
-        const response = await sendBatch(client, drafts, constrainedBatch)
-        if (onSendApplied) {
-          onSendApplied(sendable, response.data ?? [])
+        const toSend = validSendable.slice(0, constrainedBatch)
+        const drafts: MessageDraft[] = toSend.map((action) => ({
+          ...action.payload,
+          client_id: action.id,
+        }))
+
+        if (drafts.length > 0) {
+          const response = await sendBatch(client, drafts, constrainedBatch)
+          if (onSendApplied) {
+            onSendApplied(toSend, response.data ?? [])
+          }
+          const sentIds = new Set(toSend.map((item) => item.id))
+          setPending((current) => current.filter((action) => !sentIds.has(action.id)))
         }
-        setPending((current) => current.filter((action) => !sendable.some((item) => item.id === action.id)))
       }
 
       setStatus("pulling")

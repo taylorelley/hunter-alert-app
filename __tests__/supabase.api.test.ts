@@ -6,7 +6,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 describe('supabase api wrapper', () => {
   const mockClient = () => {
     const rpc = vi.fn();
-    const auth = { signInWithPassword: vi.fn() } as unknown as SupabaseClient['auth'];
+    const auth = {
+      signInWithPassword: vi.fn(),
+      getSession: vi.fn().mockResolvedValue({ data: { session: {} }, error: null }),
+    } as unknown as SupabaseClient['auth'];
     return { rpc, auth } as unknown as SupabaseClient;
   };
 
@@ -60,6 +63,7 @@ describe('supabase api wrapper', () => {
       ],
     });
     expect(result.data).toEqual(['ok']);
+    expect(result.dropped).toEqual([{ draft: drafts[1], reason: 'empty_body' }]);
   });
 
   it('skips RPC when sanitized payload is empty', async () => {
@@ -70,7 +74,45 @@ describe('supabase api wrapper', () => {
     const result = await sendBatch(client, drafts, 5);
 
     expect(client.rpc).not.toHaveBeenCalled();
-    expect(result).toEqual({ data: [], error: null });
+    expect(result).toEqual({ data: [], error: null, dropped: [{ draft: drafts[0], reason: 'empty_body' }] });
+  });
+
+  it('drops messages with unserializable metadata without failing the batch', async () => {
+    const client = mockClient();
+    (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: ['ok'], error: null });
+
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    const drafts: MessageDraft[] = [
+      { conversation_id: 'c1', body: 'valid message' },
+      { conversation_id: 'c1', body: 'bad metadata', metadata: circular },
+    ];
+
+    const result = await sendBatch(client, drafts, 5);
+
+    expect(result.data).toEqual(['ok']);
+    expect(result.dropped).toEqual([
+      { draft: drafts[1], reason: 'metadata_not_serializable' },
+    ]);
+  });
+
+  it('drops messages exceeding MAX_MESSAGE_BYTES', async () => {
+    const client = mockClient();
+    (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: ['ok'], error: null });
+
+    const largeBody = 'x'.repeat(5000);
+    const drafts: MessageDraft[] = [
+      { conversation_id: 'c1', body: 'small message' },
+      { conversation_id: 'c1', body: largeBody },
+    ];
+
+    const result = await sendBatch(client, drafts, 5);
+
+    expect(result.data).toEqual(['ok']);
+    expect(result.dropped).toEqual([
+      expect.objectContaining({ draft: drafts[1], reason: 'oversize' }),
+    ]);
   });
 
   it('slices pull_updates responses to maxRows and handles missing collections', async () => {
