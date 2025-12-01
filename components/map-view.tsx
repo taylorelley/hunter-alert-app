@@ -54,34 +54,31 @@ let tileProtocolRegistered = false
 function registerTileCacheProtocol() {
   if (tileProtocolRegistered || typeof window === "undefined" || !("caches" in window)) return
 
-  maplibregl.addProtocol(TILE_CACHE_PROTOCOL, (params, callback) => {
+  maplibregl.addProtocol(TILE_CACHE_PROTOCOL, async (params, controller) => {
     const url = params.url.replace(`${TILE_CACHE_PROTOCOL}://`, "https://")
-    const controller = new AbortController()
+    const cache = await caches.open(TILE_CACHE_NAME)
 
-    caches
-      .open(TILE_CACHE_NAME)
-      .then(async (cache) => {
-        try {
-          const cached = await cache.match(url)
-          if (cached) {
-            const buffer = await cached.arrayBuffer()
-            callback(null, buffer, cached.headers.get("content-type") || "application/octet-stream")
-            return
-          }
+    const cached = await cache.match(url)
+    if (cached) {
+      const buffer = await cached.arrayBuffer()
+      return {
+        data: buffer,
+        cacheControl: cached.headers.get("Cache-Control"),
+        expires: cached.headers.get("Expires"),
+      }
+    }
 
-          const response = await fetch(url, { signal: controller.signal })
-          if (!response.ok) throw new Error(`Tile fetch failed: ${response.status}`)
+    const response = await fetch(url, { signal: controller.signal })
+    if (!response.ok) throw new Error(`Tile fetch failed: ${response.status}`)
 
-          cache.put(url, response.clone())
-          const buffer = await response.arrayBuffer()
-          callback(null, buffer, response.headers.get("content-type") || "application/octet-stream")
-        } catch (error) {
-          callback(error as Error)
-        }
-      })
-      .catch((error) => callback(error as Error))
+    cache.put(url, response.clone())
+    const buffer = await response.arrayBuffer()
 
-    return { cancel: () => controller.abort() }
+    return {
+      data: buffer,
+      cacheControl: response.headers.get("Cache-Control"),
+      expires: response.headers.get("Expires"),
+    }
   })
 
   tileProtocolRegistered = true
@@ -92,11 +89,11 @@ function cacheableRequest(url: string, resourceType?: string): RequestParameters
     const protocolUrl = url.replace(/^https:\/\//, `${TILE_CACHE_PROTOCOL}://`)
 
     if (resourceType && ["Tile", "Glyphs", "SpriteImage", "SpriteJSON", "Image", "Style", "Source"].includes(resourceType)) {
-      return { url: protocolUrl, mode: "cors", cache: "force-cache" }
+      return { url: protocolUrl, cache: "force-cache" }
     }
   }
 
-  return { url, mode: "cors" }
+  return { url }
 }
 
 interface MapViewProps {
@@ -188,7 +185,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
       style: MAP_STYLES[activeLayer],
       center: DEFAULT_CENTER,
       zoom: 11,
-      attributionControl: true,
+      attributionControl: { compact: true },
       transformRequest: (url, resourceType) => cacheableRequest(url, resourceType),
     })
 
