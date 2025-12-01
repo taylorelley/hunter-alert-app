@@ -311,6 +311,16 @@ After deploying to production, verify:
 - [ ] Review and update privacy policy
 - [ ] Test emergency SOS functionality
 
+### Release Preflight
+
+Run the automated preflight checklist before tagging a release to confirm the repo is ready for constrained-network builds:
+
+```bash
+pnpm lint:preflight
+```
+
+The checklist runs ESLint, Vitest, and verifies both the Android manifest satellite flag and iOS carrier-constrained entitlements, along with Capacitor plugin bridge files.
+
 ## CI/CD
 
 ### GitHub Actions
