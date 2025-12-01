@@ -8,7 +8,7 @@ export type NetworkState = {
   ultraConstrained?: boolean;
 };
 
-export type PendingActionType = 'SEND_MESSAGE';
+export type PendingActionType = 'SEND_MESSAGE' | 'SEND_ALERT';
 
 export interface PendingAction {
   id: string;

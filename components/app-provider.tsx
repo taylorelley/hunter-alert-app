@@ -18,6 +18,7 @@ import {
 import { useNetwork } from "./network-provider"
 import { useSyncEngine } from "@/lib/sync/use-sync-engine"
 import { PendingAction } from "@/lib/sync/types"
+import { getCurrentPosition } from "@/lib/geolocation"
 import {
   PullUpdatesResult,
   Group as APIGroup,
@@ -26,6 +27,7 @@ import {
   Profile as APIProfile,
   GroupInvitation as APIGroupInvitation,
   GroupActivity as APIGroupActivity,
+  MessageDraft,
 } from "@/lib/supabase/types"
 
 export type TripStatus = "none" | "planning" | "active" | "paused" | "completed"
@@ -39,6 +41,14 @@ export interface CheckIn {
   batteryLevel: number
   signalStrength: number
   pending?: boolean
+}
+
+type SOSStatus = "idle" | "queued" | "sending" | "delivered" | "canceled" | "resolved" | "failed"
+
+interface SOSLocation {
+  lat: number
+  lng: number
+  accuracy?: number
 }
 
 export interface Trip {
@@ -149,6 +159,8 @@ interface AppState {
   checkInStatus: CheckInStatus
   nextCheckInDue: Date | null
   sosActive: boolean
+  sosStatus: SOSStatus
+  lastSOSLocation: SOSLocation | null
   userName: string
   emergencyContacts: { name: string; phone: string }[]
 }
@@ -187,8 +199,9 @@ interface AppContextValue extends AppState {
     geofenceId: string,
     options: { notifyOnEntry: boolean; notifyOnExit: boolean; enabled?: boolean },
   ) => Promise<void>
-  triggerSOS: (silent: boolean) => void
-  cancelSOS: () => void
+  triggerSOS: (silent: boolean) => Promise<void>
+  cancelSOS: () => Promise<void>
+  resolveSOS: () => Promise<void>
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
@@ -209,6 +222,45 @@ function mergeRecords<T extends { id?: string }>(current: T[], incoming: T[]): T
     map.set(key, { ...(map.get(key) ?? {}), ...item })
   })
   return Array.from(map.values())
+}
+
+function normalizeSOSMetadata(message: MessageRecord): {
+  status: "active" | "canceled" | "resolved"
+  location: SOSLocation | null
+  silent: boolean
+} | null {
+  const metadata = (message.metadata as Record<string, unknown> | null) ?? {}
+  const kind = ((metadata.type as string) || (metadata.kind as string) || message.message_type)?.toLowerCase()
+  if (kind !== "sos" && kind !== "alert") {
+    return null
+  }
+
+  const rawStatus = ((metadata.status as string) || (message.status as string) || "active").toLowerCase()
+  const status: "active" | "canceled" | "resolved" =
+    rawStatus === "canceled" || rawStatus === "cancelled"
+      ? "canceled"
+      : rawStatus === "resolved"
+        ? "resolved"
+        : "active"
+
+  const rawLocation = metadata.location as Record<string, unknown> | undefined
+  const lat = typeof rawLocation?.latitude === "number" ? rawLocation.latitude : Number(rawLocation?.lat)
+  const lng = typeof rawLocation?.longitude === "number" ? rawLocation.longitude : Number(rawLocation?.lng)
+  const accuracy = typeof rawLocation?.accuracy === "number" ? rawLocation.accuracy : undefined
+
+  const location: SOSLocation | null = Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng, accuracy } : null
+
+  return {
+    status,
+    location,
+    silent: Boolean(metadata.silent),
+  }
+}
+
+function isMessageDraftPayload(payload: unknown): payload is MessageDraft {
+  if (!payload || typeof payload !== "object") return false
+  const candidate = payload as Record<string, unknown>
+  return typeof candidate.conversation_id === "string" && typeof candidate.body === "string"
 }
 
 function mapConversationToTrip(conversation: ConversationRecord, messages: MessageRecord[]): Trip {
@@ -284,9 +336,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     checkInStatus: "pending",
     nextCheckInDue: null,
     sosActive: false,
+    sosStatus: "idle",
+    lastSOSLocation: null,
     userName: "Guest",
     emergencyContacts: [],
   })
+
+  const captureSOSLocation = useCallback(async (): Promise<SOSLocation | null> => {
+    try {
+      const coords = await getCurrentPosition({ enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 })
+      return {
+        lat: coords.latitude,
+        lng: coords.longitude,
+        accuracy: coords.accuracy,
+      }
+    } catch (error) {
+      console.warn("Unable to capture SOS location", error)
+      return state.lastSOSLocation
+    }
+  }, [state.lastSOSLocation])
 
   const signIn = useCallback(
     async (email: string, password: string) => {
@@ -385,6 +453,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
       return Array.from(byId.values())
     })
+
+    const alertActions = actions.filter((action) => action.type === "SEND_ALERT")
+    if (alertActions.length) {
+      const latest = alertActions[alertActions.length - 1]
+      const payload = latest.payload
+      if (!isMessageDraftPayload(payload)) return
+      const normalized = normalizeSOSMetadata({
+        conversation_id: payload.conversation_id,
+        body: payload.body,
+        metadata: payload.metadata,
+        created_at: payload.created_at,
+        message_type: "sos",
+      })
+
+      if (normalized) {
+        setState((prev) => ({
+          ...prev,
+          sosActive: normalized.status === "active",
+          sosStatus:
+            normalized.status === "active"
+              ? "delivered"
+              : normalized.status === "canceled"
+                ? "canceled"
+                : "resolved",
+          lastSOSLocation: normalized.location ?? prev.lastSOSLocation,
+        }))
+      }
+    }
   }, [])
 
   const { enqueue, pending, status, lastSyncedAt, flush } = useSyncEngine({
@@ -449,6 +545,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
       nextCheckInDue: activeTrip ? nextDue : null,
     }))
   }, [conversations, messages])
+
+  useEffect(() => {
+    const tripId = state.currentTrip?.id
+    if (!tripId) {
+      setState((prev) =>
+        prev.sosActive || prev.sosStatus !== "idle"
+          ? { ...prev, sosActive: false, sosStatus: "idle" }
+          : prev,
+      )
+      return
+    }
+
+    const sosMessages = messages
+      .filter((message) => message.conversation_id === tripId)
+      .map((message) => ({ message, meta: normalizeSOSMetadata(message) }))
+      .filter((entry): entry is { message: MessageRecord; meta: NonNullable<ReturnType<typeof normalizeSOSMetadata>> } =>
+        Boolean(entry.meta),
+      )
+
+    if (!sosMessages.length) {
+      setState((prev) =>
+        prev.sosStatus === "idle" && !prev.sosActive ? prev : { ...prev, sosActive: false, sosStatus: "idle" },
+      )
+      return
+    }
+
+    sosMessages.sort(
+      (a, b) =>
+        parseDate(a.message.created_at, new Date(0)).getTime() - parseDate(b.message.created_at, new Date(0)).getTime(),
+    )
+    const latest = sosMessages[sosMessages.length - 1]
+    const desiredStatus: SOSStatus =
+      latest.meta.status === "active"
+        ? "delivered"
+        : latest.meta.status === "canceled"
+          ? "canceled"
+          : "resolved"
+
+    setState((prev) => {
+      const nextLocation = latest.meta.location ?? prev.lastSOSLocation
+      const unchangedLocation =
+        (prev.lastSOSLocation === null && nextLocation === null) ||
+        (prev.lastSOSLocation?.lat === nextLocation?.lat && prev.lastSOSLocation?.lng === nextLocation?.lng)
+
+      if (
+        prev.sosActive === (latest.meta.status === "active") &&
+        prev.sosStatus === desiredStatus &&
+        unchangedLocation
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        sosActive: latest.meta.status === "active",
+        sosStatus: desiredStatus,
+        lastSOSLocation: nextLocation,
+      }
+    })
+  }, [messages, state.currentTrip?.id])
 
   const startTrip = useCallback(
     async (trip: Omit<Trip, "id" | "checkIns" | "status">) => {
@@ -733,14 +889,94 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [flush, session, supabase],
   )
 
-  const triggerSOS = useCallback((silent: boolean) => {
-    console.warn(`SOS triggered (${silent ? "silent" : "full"})`)
-    setState((prev) => ({ ...prev, sosActive: true }))
-  }, [])
+  const buildSOSPayload = useCallback(
+    async (status: "active" | "canceled" | "resolved", silent: boolean, reason?: string) => {
+      if (!session) throw new Error("Sign-in required to send SOS")
+      const targetConversationId = state.currentTrip?.id || conversations[0]?.id
 
-  const cancelSOS = useCallback(() => {
-    setState((prev) => ({ ...prev, sosActive: false }))
-  }, [])
+      if (!targetConversationId) {
+        throw new Error("No active trip or group conversation available for SOS alerts")
+      }
+
+      const location = await captureSOSLocation()
+      const created_at = new Date().toISOString()
+      const body =
+        status === "active"
+          ? silent
+            ? "Silent SOS triggered"
+            : "SOS triggered"
+          : status === "canceled"
+            ? "SOS canceled - marked safe"
+            : "SOS resolved - confirmed safe"
+
+      const metadata = {
+        type: "sos",
+        status,
+        silent,
+        location: location
+          ? { latitude: location.lat, longitude: location.lng, accuracy: location.accuracy }
+          : undefined,
+        contacts: state.emergencyContacts,
+        tripId: state.currentTrip?.id ?? null,
+        groupIds: state.groups.map((group) => group.id),
+        reason: reason ?? undefined,
+      }
+
+      return { payload: { conversation_id: targetConversationId, body, metadata, created_at }, location }
+    },
+    [captureSOSLocation, conversations, session, state.currentTrip?.id, state.emergencyContacts, state.groups],
+  )
+
+  const dispatchSOS = useCallback(
+    async (status: "active" | "canceled" | "resolved", silent = false, reason?: string) => {
+      if (!session) throw new Error("Sign-in required to dispatch SOS")
+      const { payload, location } = await buildSOSPayload(status, silent, reason)
+      const actionId = uniqueId()
+      const createdAt = payload.created_at || new Date().toISOString()
+
+      enqueue({
+        id: actionId,
+        type: "SEND_ALERT",
+        payload,
+        createdAt,
+      })
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: actionId,
+          conversation_id: payload.conversation_id,
+          body: payload.body,
+          metadata: payload.metadata,
+          created_at: payload.created_at,
+          sender_id: session.user.id,
+          pending: true,
+          message_type: "sos",
+        },
+      ])
+
+      setState((prev) => ({
+        ...prev,
+        sosActive: status === "active",
+        sosStatus:
+          status === "active"
+            ? network.connectivity === "offline"
+              ? "queued"
+              : "sending"
+            : status === "canceled"
+              ? "canceled"
+              : "resolved",
+        lastSOSLocation: location ?? prev.lastSOSLocation,
+      }))
+    },
+    [buildSOSPayload, enqueue, network.connectivity, session],
+  )
+
+  const triggerSOS = useCallback((silent: boolean) => dispatchSOS("active", silent), [dispatchSOS])
+
+  const cancelSOS = useCallback(() => dispatchSOS("canceled", false, "user_canceled"), [dispatchSOS])
+
+  const resolveSOS = useCallback(() => dispatchSOS("resolved", false, "user_resolved"), [dispatchSOS])
 
   // Convert backend waypoints and groups to UI format
   useEffect(() => {
@@ -900,6 +1136,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateGeofenceAlerts,
       triggerSOS,
       cancelSOS,
+      resolveSOS,
     }),
     [
       addWaypoint,
@@ -926,6 +1163,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       state,
       status,
       user,
+      resolveSOS,
     ],
   )
 

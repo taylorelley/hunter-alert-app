@@ -69,7 +69,9 @@ export function useSyncEngine({
     setStatus(pending.length > 0 ? "sending" : "pulling")
 
     try {
-      const sendable = pending.filter((action) => action.type === "SEND_MESSAGE")
+      const sendable = pending.filter(
+        (action) => action.type === "SEND_MESSAGE" || action.type === "SEND_ALERT",
+      )
       if (sendable.length > 0) {
         const drafts: MessageDraft[] = sendable.map((action) => {
           if (isMessageDraft(action.payload)) {
