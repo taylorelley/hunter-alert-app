@@ -44,6 +44,9 @@ export function GroupsView() {
 
     try {
       await createGroup(name, description)
+    } catch (error) {
+      console.error("Failed to create group:", error)
+      window.alert("Could not create the group. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -56,6 +59,9 @@ export function GroupsView() {
     setIsSubmitting(true)
     try {
       await inviteToGroup(groupId, email, role)
+    } catch (error) {
+      console.error("Failed to send invitation:", error)
+      window.alert("Could not send the invitation. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -70,6 +76,9 @@ export function GroupsView() {
       } else {
         await joinGroup(group.id)
       }
+    } catch (error) {
+      console.error("Failed to update membership:", error)
+      window.alert("Could not update group membership. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -87,6 +96,9 @@ export function GroupsView() {
     setIsSubmitting(true)
     try {
       await createGeofence({ name, latitude, longitude, radiusMeters, groupId: groupId ?? undefined })
+    } catch (error) {
+      console.error("Failed to create geofence:", error)
+      window.alert("Could not create the geofence. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -96,6 +108,9 @@ export function GroupsView() {
     setIsSubmitting(true)
     try {
       await respondToInvitation(invitationId, decision)
+    } catch (error) {
+      console.error("Failed to respond to invitation:", error)
+      window.alert("Could not update the invitation. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -250,7 +265,13 @@ export function GroupsView() {
                           <Shield className="w-4 h-4 mr-1" />
                           Add Geofence
                         </Button>
-                        <Button variant="outline" size="icon" className="h-9 w-9 bg-transparent">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9 bg-transparent"
+                          disabled
+                          title="Group settings coming soon"
+                        >
                           <Settings className="w-4 h-4" />
                         </Button>
                       </div>
@@ -319,9 +340,11 @@ export function GroupsView() {
                     <div>
                       <p className="font-medium text-sm">{geofence.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {geofence.notifyOnEntry ? "Entry" : ""}
-                        {geofence.notifyOnEntry && geofence.notifyOnExit ? " & " : ""}
-                        {geofence.notifyOnExit ? "Exit" : ""} alerts
+                        {geofence.notifyOnEntry || geofence.notifyOnExit
+                          ? `${geofence.notifyOnEntry ? "Entry" : ""}${
+                              geofence.notifyOnEntry && geofence.notifyOnExit ? " & " : ""
+                            }${geofence.notifyOnExit ? "Exit" : ""} alerts`
+                          : "No alerts"}
                       </p>
                     </div>
                   </div>
@@ -355,9 +378,7 @@ export function GroupsView() {
                     </div>
                     <div className="flex-1">
                       <h3 className="font-semibold">Pending Invitation</h3>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {invite.recipientEmail || "You"} invited to join {groupName}
-                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">You've been invited to join {groupName}</p>
                       <div className="flex gap-2 mt-3">
                         <Button size="sm" onClick={() => handleInvitationResponse(invite.id, "accept")} disabled={isSubmitting}>
                           Accept

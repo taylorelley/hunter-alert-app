@@ -174,6 +174,10 @@ export async function inviteToGroup(
     throw new Error('Invitation email is required');
   }
 
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    throw new Error('Invalid email format');
+  }
+
   const { data, error } = await client.rpc('create_group_invitation', {
     group_id: params.groupId,
     invite_email: normalizedEmail,

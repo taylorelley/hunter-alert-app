@@ -220,6 +220,7 @@ declare
   invitation group_invitations;
   invitee_id uuid;
   normalized_role text := lower(coalesce(invite_role, 'member'));
+  normalized_email text := trim(invite_email);
 begin
   if auth.uid() is null then
     raise exception 'Authentication is required';
@@ -229,6 +230,14 @@ begin
     raise exception 'Invalid role requested';
   end if;
 
+  if coalesce(normalized_email, '') = '' then
+    raise exception 'Invitation email is required';
+  end if;
+
+  if normalized_email !~* '^[^\s@]+@[^\s@]+\.[^\s@]+$' then
+    raise exception 'Invalid invitation email';
+  end if;
+
   if not exists (
     select 1 from groups g
     where g.id = group_id and (g.owner_id = auth.uid() or auth.uid() = any(g.member_ids))
@@ -236,16 +245,30 @@ begin
     raise exception 'Group not found or access denied';
   end if;
 
-  select id into invitee_id from profiles where lower(coalesce(email, '')) = lower(invite_email) limit 1;
+  if lower(normalized_email) = lower(coalesce((select email from profiles where id = auth.uid()), '')) then
+    raise exception 'Cannot invite yourself';
+  end if;
+
+  if exists (
+    select 1
+    from group_invitations gi
+    where gi.group_id = group_id
+      and lower(coalesce(gi.recipient_email, '')) = lower(normalized_email)
+      and gi.status = 'pending'
+  ) then
+    raise exception 'Invitation already sent to this email';
+  end if;
+
+  select id into invitee_id from profiles where lower(coalesce(email, '')) = lower(normalized_email) limit 1;
 
   insert into group_invitations (
     group_id, sender_id, recipient_id, recipient_email, role, metadata
   ) values (
-    group_id, auth.uid(), invitee_id, invite_email, normalized_role, jsonb_build_object('role', normalized_role)
+    group_id, auth.uid(), invitee_id, normalized_email, normalized_role, jsonb_build_object('role', normalized_role)
   ) returning * into invitation;
 
   insert into group_activity (group_id, actor_id, activity_type, description, metadata)
-  values (group_id, auth.uid(), 'invite', 'Sent an invitation', jsonb_build_object('recipient_email', invite_email));
+  values (group_id, auth.uid(), 'invite', 'Sent an invitation', jsonb_build_object('recipient_email', normalized_email));
 
   return invitation;
 end;
@@ -611,7 +634,7 @@ begin
           where g.id = group_activity.group_id
             and (g.owner_id = auth.uid() or auth.uid() = any(g.member_ids))
         )
-          and (since is null or a.created_at > since)
+          and (since is null or group_activity.created_at > since)
         order by a.created_at asc
         limit max_rows
       ) as a
