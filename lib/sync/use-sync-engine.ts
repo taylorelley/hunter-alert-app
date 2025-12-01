@@ -107,7 +107,8 @@ export function useSyncEngine({
           if (onSendApplied) {
             onSendApplied(toSend, response.data ?? [])
           }
-          setPending((current) => current.filter((action) => !toSend.some((item) => item.id === action.id)))
+          const sentIds = new Set(toSend.map((item) => item.id))
+          setPending((current) => current.filter((action) => !sentIds.has(action.id)))
         }
       }
 

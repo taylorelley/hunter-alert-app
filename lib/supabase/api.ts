@@ -12,18 +12,39 @@ import {
 
 const DEFAULT_BATCH_LIMIT = appConfig.constraints.backendMaxMessageBatch.value;
 const DEFAULT_PULL_LIMIT = appConfig.constraints.backendMaxPullLimit.value;
+const MAX_MESSAGE_BYTES = 4 * 1024;
+
+function getMessageSizeBytes(message: MessageDraft, encoder: TextEncoder): number {
+  const bodyBytes = encoder.encode(message.body ?? "").byteLength;
+  const metadataBytes = message.metadata
+    ? encoder.encode(JSON.stringify(message.metadata)).byteLength
+    : 0;
+  return bodyBytes + metadataBytes;
+}
 
 function clampBatch(messages: MessageDraft[], limit: number): MessageDraft[] {
   return messages.slice(0, Math.max(limit, 1));
 }
 
 function sanitizeMessages(messages: MessageDraft[]): MessageDraft[] {
+  const encoder = new TextEncoder();
+
   return messages
     .map((message) => ({
       ...message,
       body: message.body.trim(),
     }))
-    .filter((message) => message.body.length > 0);
+    .filter((message) => message.body.length > 0)
+    .filter((message) => {
+      const messageSize = getMessageSizeBytes(message, encoder);
+      if (messageSize > MAX_MESSAGE_BYTES) {
+        console.warn(
+          `Dropping message exceeding ${MAX_MESSAGE_BYTES} bytes (got ${messageSize} bytes)`,
+        );
+        return false;
+      }
+      return true;
+    });
 }
 
 export async function authenticate(
