@@ -5,7 +5,7 @@
   "scripts": {
     "build": "node scripts/validate-env.mjs && next build",
     "dev": "node scripts/validate-env.mjs && next dev",
-    "lint": "eslint .",
+    "lint": "eslint app backend components lib scripts",
     "lint:preflight": "node scripts/preflight.js",
     "start": "node scripts/validate-env.mjs && next start",
     "test": "vitest run",

@@ -16,7 +16,7 @@ interface SyncEngineOptions {
   cursor: string | null
   onCursor: (value: string | null) => void
   onPullApplied?: (result: PullUpdatesResult) => void
-  onSendApplied?: (actions: PendingAction[], records: any[]) => void
+  onSendApplied?: (actions: PendingAction[], records: Record<string, unknown>[]) => void
 }
 
 const SYNC_LIMITS = appConfig.constraints
@@ -66,7 +66,7 @@ export function useSyncEngine({
       const sendable = pending.filter((action) => action.type === "SEND_MESSAGE")
       if (sendable.length > 0) {
         const drafts: MessageDraft[] = sendable.map((action) => ({
-          ...action.payload,
+          ...(action.payload as unknown as MessageDraft),
           client_id: action.id,
         }))
 
@@ -91,7 +91,9 @@ export function useSyncEngine({
       markCursor(typeof newCursor === 'string' ? newCursor : cursor)
       onPullApplied?.(updates)
       setStatus("idle")
-      backoffRef.current && clearTimeout(backoffRef.current)
+      if (backoffRef.current) {
+        clearTimeout(backoffRef.current)
+      }
       failureCountRef.current = 0
     } catch (error) {
       console.error("Sync failed", error)

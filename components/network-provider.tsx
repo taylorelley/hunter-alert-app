@@ -23,6 +23,15 @@ export interface NetworkState {
   lastUpdated: number
 }
 
+interface NetworkInformationLike {
+  type?: string
+  effectiveType?: string
+  saveData?: boolean
+  downlink?: number
+  addEventListener?: (event: string, listener: () => void) => void
+  removeEventListener?: (event: string, listener: () => void) => void
+}
+
 const DEFAULT_STATE: NetworkState = {
   connectivity: "offline",
   constrained: false,
@@ -51,13 +60,13 @@ async function computeNetworkState(): Promise<NetworkState> {
   }
 
   // Web fallback using browser APIs
-  const connection = (navigator as any).connection
+  const connection = (navigator as Navigator & { connection?: NetworkInformationLike }).connection
   const online = navigator.onLine
   const type = connection?.type as string | undefined
   const effective = connection?.effectiveType as string | undefined
   const saveData = Boolean(connection?.saveData)
   const constrained = saveData || ["2g", "slow-2g"].includes(effective || "")
-  const ultraConstrained = Boolean(constrained && (effective === "slow-2g" || connection?.downlink < 0.5))
+  const ultraConstrained = Boolean(constrained && (effective === "slow-2g" || (connection?.downlink ?? 1) < 0.5))
 
   let connectivity: NetworkConnectivity = "wifi"
   if (!online) {
@@ -114,7 +123,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
 
     // Web fallback listeners
     const handleOnline = () => refreshRef.current?.()
-    const connection = (navigator as any).connection
+    const connection = (navigator as Navigator & { connection?: NetworkInformationLike }).connection
 
     window.addEventListener("online", handleOnline)
     window.addEventListener("offline", handleOnline)

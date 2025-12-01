@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useApp } from "./app-provider"
 import { cn } from "@/lib/utils"
-import { getCurrentPosition, type Coordinates } from "@/lib/geolocation"
+import { getCurrentPosition } from "@/lib/geolocation"
 import { getWeatherByCoordinates, type WeatherData, formatCondition } from "@/lib/weather"
 
 interface HomeViewProps {
@@ -37,7 +37,6 @@ interface HomeViewProps {
 export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: HomeViewProps) {
   const { currentTrip, nextCheckInDue, checkInStatus, isPremium, waypoints } = useApp()
   const [timeRemaining, setTimeRemaining] = useState("")
-  const [location, setLocation] = useState<Coordinates | null>(null)
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(true)
 
@@ -76,7 +75,6 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
         setWeatherLoading(true)
         const coords = await getCurrentPosition()
         if (!mounted) return
-        setLocation(coords)
 
         // Fetch weather using location
         const weatherData = await getWeatherByCoordinates(coords.latitude, coords.longitude)

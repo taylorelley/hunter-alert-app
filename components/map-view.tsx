@@ -25,7 +25,7 @@ interface MapViewProps {
 }
 
 export function MapView({ onAddWaypoint }: MapViewProps) {
-  const { waypoints, groups } = useApp()
+  const { waypoints } = useApp()
   const [showLayers, setShowLayers] = useState(false)
   const [activeLayer, setActiveLayer] = useState<"terrain" | "satellite">("terrain")
   const [showNearbyHunters, setShowNearbyHunters] = useState(true)
