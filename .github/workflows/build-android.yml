@@ -6,20 +6,23 @@ name: Build Android APK
 # Set these in: Repository Settings → Secrets and variables → Actions
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
     branches:
       - main
-  pull_request:
-    branches:
-      - main
+    types:
+      - completed
 
 jobs:
   build:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -117,7 +120,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success'
 
     permissions:
       contents: write
@@ -125,6 +128,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Download APK artifact
         uses: actions/download-artifact@v4
@@ -152,10 +157,10 @@ jobs:
 
             **Version:** ${{ steps.version.outputs.version }}
             **Build:** ${{ github.run_number }}
-            **Commit:** ${{ github.sha }}
+            **Commit:** ${{ github.event.workflow_run.head_sha }}
 
             ### Changes
-            ${{ github.event.head_commit.message }}
+            ${{ github.event.workflow_run.head_commit.message }}
 
             ### Installation
             Download the APK and install it on your Android device.
