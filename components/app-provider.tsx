@@ -119,6 +119,7 @@ interface AppContextValue extends AppState {
   signOut: () => Promise<void>
   refresh: () => Promise<void>
   startTrip: (trip: Omit<Trip, "id" | "checkIns" | "status">) => Promise<void>
+  updateTrip: (tripId: string, trip: Omit<Trip, "id" | "checkIns">) => Promise<void>
   endTrip: () => Promise<void>
   checkIn: (status: "ok" | "need-help", notes: string) => Promise<void>
   addWaypoint: (waypoint: Omit<Waypoint, "id" | "createdAt">) => Promise<void>
@@ -355,8 +356,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const mappedTrips = conversations.map((conversation) => mapConversationToTrip(conversation, messages))
-    const activeTrip = mappedTrips[0]
+    const mappedTrips = conversations
+      .map((conversation) => mapConversationToTrip(conversation, messages))
+      .sort((a, b) => b.startDate.getTime() - a.startDate.getTime())
+
+    const activeTrip = mappedTrips.find((trip) => trip.status === "active") || null
+
     const cadenceMs = (activeTrip?.checkInCadence || 4) * 60 * 60 * 1000
     const lastCheckIn = activeTrip?.checkIns[0]?.timestamp
     const now = Date.now()
@@ -368,8 +373,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...prev,
       currentTrip: activeTrip,
       trips: mappedTrips,
-      checkInStatus: pendingCheck ? "pending" : overdue ? "overdue" : "ok",
-      nextCheckInDue: nextDue,
+      checkInStatus: activeTrip ? (pendingCheck ? "pending" : overdue ? "overdue" : "ok") : "pending",
+      nextCheckInDue: activeTrip ? nextDue : null,
     }))
   }, [conversations, messages])
 
@@ -399,9 +404,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (error) throw error
       if (data) {
         setConversations((prev) => [data, ...prev])
+        await flush()
       }
     },
-    [session, supabase],
+    [flush, session, supabase],
+  )
+
+  const updateTrip = useCallback(
+    async (tripId: string, trip: Omit<Trip, "id" | "checkIns">) => {
+      if (!session) throw new Error("Sign-in required before updating a trip")
+
+      const metadata = {
+        destination: trip.destination,
+        notes: trip.notes,
+        checkInCadence: trip.checkInCadence,
+        emergencyContacts: trip.emergencyContacts,
+        startDate: trip.startDate.toISOString(),
+        endDate: trip.endDate.toISOString(),
+        status: trip.status,
+      }
+
+      const { data, error } = await supabase
+        .from("conversations")
+        .update({
+          title: trip.destination,
+          metadata,
+        })
+        .eq("id", tripId)
+        .select()
+        .maybeSingle()
+
+      if (error) throw error
+      if (data) {
+        setConversations((prev) => prev.map((conversation) => (conversation.id === tripId ? data : conversation)))
+      }
+
+      await flush()
+    },
+    [flush, session, supabase],
   )
 
   const endTrip = useCallback(async () => {
@@ -415,12 +455,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       endDate: state.currentTrip.endDate.toISOString(),
       status: "completed",
     }
-    await supabase
+    const { data: updatedConversation } = await supabase
       .from("conversations")
       .update({ metadata })
       .eq("id", state.currentTrip.id)
-    setState((prev) => ({ ...prev, currentTrip: prev.currentTrip ? { ...prev.currentTrip, status: "completed" } : null }))
-  }, [session, state.currentTrip, supabase])
+      .select()
+      .maybeSingle()
+
+    setConversations((prev) =>
+      prev.map((conversation) =>
+        conversation.id === state.currentTrip?.id ? { ...conversation, ...(updatedConversation ?? {}), metadata } : conversation,
+      ),
+    )
+
+    setState((prev) => ({
+      ...prev,
+      currentTrip: null,
+      trips: prev.trips.map((trip) => (trip.id === state.currentTrip?.id ? { ...trip, status: "completed" } : trip)),
+    }))
+
+    await flush()
+  }, [flush, session, state.currentTrip, supabase])
 
   const checkIn = useCallback(
     async (statusValue: "ok" | "need-help", notes: string) => {
@@ -625,6 +680,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refresh,
       startTrip,
       endTrip,
+      updateTrip,
       checkIn,
       addWaypoint,
       createGroup,
@@ -647,6 +703,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       signIn,
       signOut,
       startTrip,
+      updateTrip,
       state,
       status,
       user,

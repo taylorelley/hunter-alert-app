@@ -1,29 +1,54 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { X, MapPin, Clock, Users, FileText, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { useApp } from "../app-provider"
+import { Trip, useApp } from "../app-provider"
 import { cn } from "@/lib/utils"
 
 interface PlanTripModalProps {
   isOpen: boolean
   onClose: () => void
+  trip?: Trip | null
 }
 
-export function PlanTripModal({ isOpen, onClose }: PlanTripModalProps) {
-  const { startTrip, emergencyContacts } = useApp()
+export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
+  const { startTrip, updateTrip, emergencyContacts, refresh } = useApp()
   const [step, setStep] = useState(1)
   const [destination, setDestination] = useState("")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [checkInCadence, setCheckInCadence] = useState(4)
-  const [selectedContacts, setSelectedContacts] = useState<string[]>(emergencyContacts.map((c) => c.name))
+  const [selectedContacts, setSelectedContacts] = useState<string[]>([])
   const [notes, setNotes] = useState("")
   const [isComplete, setIsComplete] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const isEditing = useMemo(() => Boolean(trip?.id), [trip?.id])
+
+  useEffect(() => {
+    if (!isOpen) return
+    if (trip) {
+      setDestination(trip.destination)
+      setStartDate(trip.startDate.toISOString().slice(0, 10))
+      setEndDate(trip.endDate.toISOString().slice(0, 10))
+      setCheckInCadence(trip.checkInCadence)
+      setSelectedContacts(trip.emergencyContacts)
+      setNotes(trip.notes)
+    } else {
+      setDestination("")
+      setStartDate("")
+      setEndDate("")
+      setCheckInCadence(4)
+      setSelectedContacts(emergencyContacts.map((c) => c.name))
+      setNotes("")
+    }
+    setStep(1)
+    setIsComplete(false)
+    setError(null)
+  }, [emergencyContacts, isOpen, trip])
 
   if (!isOpen) return null
 
@@ -48,14 +73,24 @@ export function PlanTripModal({ isOpen, onClose }: PlanTripModalProps) {
     setIsSubmitting(true)
     setError(null)
     try {
-      await startTrip({
+      const payload = {
         destination,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         checkInCadence,
         emergencyContacts: selectedContacts,
         notes,
-      })
+        status: trip?.status ?? "active",
+      }
+
+      if (isEditing && trip) {
+        await updateTrip(trip.id, payload)
+      } else {
+        const { status: _ignoredStatus, ...createPayload } = payload
+        await startTrip(createPayload)
+      }
+
+      await refresh()
       setIsComplete(true)
       setTimeout(() => {
         setIsComplete(false)
@@ -69,7 +104,7 @@ export function PlanTripModal({ isOpen, onClose }: PlanTripModalProps) {
       }, 2000)
     } catch (err) {
       console.error(err)
-      setError("Sign in is required before you can start a trip.")
+      setError("Sign in is required before you can manage a trip.")
     } finally {
       setIsSubmitting(false)
     }
@@ -84,7 +119,7 @@ export function PlanTripModal({ isOpen, onClose }: PlanTripModalProps) {
       <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-lg mx-auto max-h-[85vh] overflow-y-auto">
         <Card className="shadow-2xl">
           <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-card z-10">
-            <h2 className="text-lg font-semibold">Plan Trip</h2>
+            <h2 className="text-lg font-semibold">{isEditing ? "Edit Trip" : "Plan Trip"}</h2>
             <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors">
               <X className="w-5 h-5" />
             </button>
@@ -124,7 +159,7 @@ export function PlanTripModal({ isOpen, onClose }: PlanTripModalProps) {
               <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-safe/20 flex items-center justify-center">
                 <CheckCircle2 className="w-10 h-10 text-safe" />
               </div>
-              <h3 className="text-xl font-semibold">Trip Started!</h3>
+              <h3 className="text-xl font-semibold">{isEditing ? "Trip Updated!" : "Trip Started!"}</h3>
               <p className="text-muted-foreground mt-2">Stay safe out there. Your contacts have been notified.</p>
             </CardContent>
           ) : (
@@ -262,7 +297,7 @@ export function PlanTripModal({ isOpen, onClose }: PlanTripModalProps) {
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-primary">
                     <FileText className="w-5 h-5" />
-                    <h3 className="font-semibold">Review & Start</h3>
+                    <h3 className="font-semibold">Review &amp; {isEditing ? "Save" : "Start"}</h3>
                   </div>
 
                   <div className="space-y-3">
@@ -323,7 +358,7 @@ export function PlanTripModal({ isOpen, onClose }: PlanTripModalProps) {
                     disabled={isSubmitting}
                     className="flex-1 bg-safe hover:bg-safe/90 text-safe-foreground"
                   >
-                    {isSubmitting ? "Starting..." : "Start Trip"}
+                    {isSubmitting ? (isEditing ? "Saving..." : "Starting...") : isEditing ? "Save Changes" : "Start Trip"}
                   </Button>
                 )}
               </div>
