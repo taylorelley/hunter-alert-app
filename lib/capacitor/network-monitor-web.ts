@@ -1,5 +1,6 @@
 import { WebPlugin } from '@capacitor/core';
 import type { NetworkMonitorPlugin, NetworkStatus } from './network-monitor';
+import type { NavigatorWithConnection } from '../network-information';
 
 export class NetworkMonitorWeb extends WebPlugin implements NetworkMonitorPlugin {
   private statusListeners: Set<(status: NetworkStatus) => void> = new Set();
@@ -12,8 +13,8 @@ export class NetworkMonitorWeb extends WebPlugin implements NetworkMonitorPlugin
       window.addEventListener('online', this.handleNetworkChange.bind(this));
       window.addEventListener('offline', this.handleNetworkChange.bind(this));
 
-      const connection = (navigator as any).connection;
-      if (connection) {
+      const connection = (navigator as NavigatorWithConnection).connection;
+      if (connection?.addEventListener) {
         connection.addEventListener('change', this.handleNetworkChange.bind(this));
       }
     }
@@ -36,7 +37,7 @@ export class NetworkMonitorWeb extends WebPlugin implements NetworkMonitorPlugin
       };
     }
 
-    const connection = (navigator as any).connection;
+    const connection = (navigator as NavigatorWithConnection).connection;
     const online = navigator.onLine;
     const type = connection?.type as string | undefined;
     const effective = connection?.effectiveType as string | undefined;
@@ -44,7 +45,8 @@ export class NetworkMonitorWeb extends WebPlugin implements NetworkMonitorPlugin
 
     // Determine if the connection is constrained
     const constrained = saveData || ['2g', 'slow-2g'].includes(effective || '');
-    const ultraConstrained = constrained && (effective === 'slow-2g' || (connection?.downlink && connection.downlink < 0.5));
+    const ultraConstrained =
+      type === 'satellite' || (constrained && (effective === 'slow-2g' || (connection?.downlink ?? 1) < 0.5));
 
     // Determine connectivity type
     let connectivity: NetworkStatus['connectivity'] = 'wifi';

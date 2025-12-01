@@ -3,7 +3,7 @@ export type PendingActionType = "SEND_MESSAGE"
 export interface PendingAction {
   id: string
   type: PendingActionType
-  payload: any
+  payload: Record<string, unknown>
   createdAt: string
 }
 

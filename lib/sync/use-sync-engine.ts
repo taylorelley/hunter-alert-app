@@ -9,6 +9,12 @@ import { PendingAction, SyncStatus } from "./types"
 import { NetworkState } from "@/components/network-provider"
 import { appConfig } from "@/lib/config/env"
 
+function isMessageDraft(payload: unknown): payload is MessageDraft {
+  if (typeof payload !== "object" || payload === null) return false
+  const record = payload as Record<string, unknown>
+  return typeof record.conversation_id === "string" && typeof record.body === "string"
+}
+
 interface SyncEngineOptions {
   client: SupabaseClient | null
   network: NetworkState
@@ -16,7 +22,7 @@ interface SyncEngineOptions {
   cursor: string | null
   onCursor: (value: string | null) => void
   onPullApplied?: (result: PullUpdatesResult) => void
-  onSendApplied?: (actions: PendingAction[], records: any[]) => void
+  onSendApplied?: (actions: PendingAction[], records: Record<string, unknown>[]) => void
 }
 
 const SYNC_LIMITS = appConfig.constraints
@@ -65,10 +71,13 @@ export function useSyncEngine({
     try {
       const sendable = pending.filter((action) => action.type === "SEND_MESSAGE")
       if (sendable.length > 0) {
-        const drafts: MessageDraft[] = sendable.map((action) => ({
-          ...action.payload,
-          client_id: action.id,
-        }))
+        const drafts: MessageDraft[] = sendable.map((action) => {
+          if (isMessageDraft(action.payload)) {
+            return { ...action.payload, client_id: action.id }
+          }
+
+          return { conversation_id: "", body: "", client_id: action.id }
+        })
 
         const constrainedBatch = Math.min(
           SYNC_LIMITS.backendMaxMessageBatch.value,
@@ -91,7 +100,9 @@ export function useSyncEngine({
       markCursor(typeof newCursor === 'string' ? newCursor : cursor)
       onPullApplied?.(updates)
       setStatus("idle")
-      backoffRef.current && clearTimeout(backoffRef.current)
+      if (backoffRef.current) {
+        clearTimeout(backoffRef.current)
+      }
       failureCountRef.current = 0
     } catch (error) {
       console.error("Sync failed", error)

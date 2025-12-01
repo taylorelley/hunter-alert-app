@@ -12,7 +12,7 @@ interface TripsViewProps {
 }
 
 export function TripsView({ onStartTrip }: TripsViewProps) {
-  const { currentTrip, trips, endTrip } = useApp()
+  const { currentTrip, endTrip } = useApp()
   const [activeTab, setActiveTab] = useState<"active" | "history">("active")
 
   const pastTrips = [

@@ -28,7 +28,6 @@ async function runSupabase(args: string[], quiet = false): Promise<string> {
 
   if (!quiet && stderr) {
     // Vitest will capture logs; this helps debug CI flakiness without polluting output unnecessarily.
-    // eslint-disable-next-line no-console
     console.warn(stderr);
   }
 
@@ -177,7 +176,6 @@ export function createThrottledFetch(options: {
       throw new Error('Bandwidth cap exceeded for simulated constrained link');
     }
 
-    // eslint-disable-next-line no-restricted-globals
     return fetch(input, init);
   };
 }

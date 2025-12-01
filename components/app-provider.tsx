@@ -44,6 +44,19 @@ export interface Waypoint {
   createdAt: Date
 }
 
+export interface Geofence {
+  id: string
+  name: string
+  description: string
+  latitude: number
+  longitude: number
+  radiusMeters: number
+  enabled: boolean
+  notifyOnEntry: boolean
+  notifyOnExit: boolean
+  createdAt: Date
+}
+
 export interface Group {
   id: string
   name: string
@@ -52,19 +65,22 @@ export interface Group {
   waypoints: Waypoint[]
 }
 
-interface Profile {
-  id: string
-  display_name: string
-  avatar_url?: string | null
-  email?: string | null
-  phone?: string | null
-  emergency_contacts: Array<{ name: string; phone: string; relationship?: string }>
-  is_premium: boolean
-  privacy_settings: {
-    shareLocation: boolean
-    showOnMap: boolean
-    notifyContacts: boolean
-  }
+type ConversationRecord = {
+  id?: string
+  title?: string | null
+  metadata?: Record<string, unknown> | null
+}
+
+type MessageRecord = {
+  id?: string
+  client_id?: string
+  message_type?: string | null
+  status?: string | null
+  body?: string | null
+  metadata?: Record<string, unknown> | null
+  created_at?: string
+  conversation_id?: string
+  pending?: boolean
 }
 
 interface AppState {
@@ -74,6 +90,7 @@ interface AppState {
   trips: Trip[]
   waypoints: Waypoint[]
   groups: Group[]
+  geofences: Geofence[]
   checkInStatus: CheckInStatus
   nextCheckInDue: Date | null
   sosActive: boolean
@@ -84,6 +101,7 @@ interface AppState {
 interface AppContextValue extends AppState {
   session: Session | null
   user: User | null
+  profile: APIProfile | null
   pendingActions: PendingAction[]
   syncStatus: string
   lastSyncedAt: string | null
@@ -114,35 +132,49 @@ function uniqueId() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`
 }
 
-function mapConversationToTrip(conversation: Record<string, any>, messages: Record<string, any>[]): Trip {
-  const metadata = (conversation.metadata || {}) as Record<string, any>
-  const cadence = Number(metadata.checkInCadence ?? 4)
-  const startDate = metadata.startDate
-    ? new Date(metadata.startDate)
-    : conversation.created_at
-      ? new Date(conversation.created_at)
-      : new Date()
-  const endDate = metadata.endDate ? new Date(metadata.endDate) : new Date(startDate.getTime() + 3 * 24 * 60 * 60 * 1000)
+function parseDate(value: unknown, fallback = new Date()): Date {
+  return typeof value === "string" ? new Date(value) : fallback
+}
+
+function mapConversationToTrip(conversation: ConversationRecord, messages: MessageRecord[]): Trip {
+  const metadata = (conversation.metadata as Record<string, unknown> | null) ?? {}
+  const rawCadence = Number(metadata.checkInCadence ?? 4)
+  const cadence = Number.isFinite(rawCadence) ? rawCadence : 4
+  const startDate = parseDate(metadata.startDate, new Date())
+  const endDate = parseDate(metadata.endDate, new Date(startDate.getTime() + 3 * 24 * 60 * 60 * 1000))
+  const emergencyContacts = Array.isArray(metadata.emergencyContacts)
+    ? (metadata.emergencyContacts as string[])
+    : []
+
   const tripMessages = messages.filter((message) => message.conversation_id === conversation.id)
-  const checkIns: CheckIn[] = tripMessages.map((message) => ({
-    id: message.id,
-    timestamp: new Date(message.created_at || Date.now()),
-    status: message.metadata?.status === "need-help" ? "need-help" : "ok",
-    notes: message.body,
-    batteryLevel: message.metadata?.batteryLevel ?? 75,
-    signalStrength: message.metadata?.signalStrength ?? 3,
-    pending: Boolean(message.pending),
-  }))
+  const checkIns: CheckIn[] = tripMessages
+    .filter((message) => !message.message_type || message.message_type === "check_in")
+    .map((message) => {
+      const checkInMetadata = (message.metadata as Record<string, unknown> | null) ?? {}
+      const batteryLevel = typeof checkInMetadata.batteryLevel === "number" ? checkInMetadata.batteryLevel : 75
+      const signalStrength = typeof checkInMetadata.signalStrength === "number" ? checkInMetadata.signalStrength : 3
+      const status = checkInMetadata.status === "need-help" ? "need-help" : "ok"
+
+      return {
+        id: message.id || message.client_id || uniqueId(),
+        timestamp: parseDate(message.created_at, new Date()),
+        status,
+        notes: (checkInMetadata.notes as string) || message.body || "",
+        batteryLevel,
+        signalStrength,
+        pending: message.status === "pending",
+      }
+    })
 
   return {
-    id: conversation.id,
-    destination: conversation.title || metadata.destination || "Untitled trip",
+    id: conversation.id ?? uniqueId(),
+    destination: (conversation.title as string) || (metadata.destination as string) || "Untitled trip",
     startDate,
     endDate,
     checkInCadence: cadence,
-    emergencyContacts: metadata.emergencyContacts || [],
-    notes: metadata.notes || "",
-    status: metadata.status || "active",
+    emergencyContacts,
+    notes: (metadata.notes as string) || "",
+    status: (metadata.status as TripStatus) || "active",
     checkIns: checkIns.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()),
   }
 }
@@ -152,9 +184,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [supabase] = useState(() => createSupabaseClient())
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [conversations, setConversations] = useState<Record<string, any>[]>([])
-  const [messages, setMessages] = useState<Record<string, any>[]>([])
+  const [profile, setProfile] = useState<APIProfile | null>(null)
+  const [conversations, setConversations] = useState<ConversationRecord[]>([])
+  const [messages, setMessages] = useState<MessageRecord[]>([])
   const [backendGroups, setBackendGroups] = useState<APIGroup[]>([])
   const [backendWaypoints, setBackendWaypoints] = useState<APIWaypoint[]>([])
   const [backendGeofences, setBackendGeofences] = useState<APIGeofence[]>([])
@@ -167,6 +199,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     trips: [],
     waypoints: [],
     groups: [],
+    geofences: [],
     checkInStatus: "pending",
     nextCheckInDue: null,
     sosActive: false,
@@ -196,7 +229,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!supabase || !session) return
     const { data } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle()
     if (data) {
-      const profileData = data as unknown as Profile
+      const profileData = data as unknown as APIProfile
       setProfile(profileData)
       setState((prev) => ({
         ...prev,
@@ -209,17 +242,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const applyRemote = useCallback(
     (result: PullUpdatesResult) => {
-      setConversations(result.conversations ?? [])
+      setConversations((result.conversations ?? []) as ConversationRecord[])
       setMessages((prev) => {
         const merged = [...prev]
-        const byId = new Map(merged.map((item) => [item.id, item]))
-        for (const message of result.messages ?? []) {
-          const existing = byId.get(message.id) || byId.get(message.client_id)
+        const byId = new Map(merged.map((item) => [item.id ?? item.client_id ?? uniqueId(), item]))
+        for (const message of (result.messages ?? []) as MessageRecord[]) {
+          const messageId = message.id ?? message.client_id ?? uniqueId()
+          const existing = byId.get(messageId)
           if (existing) {
             Object.assign(existing, { ...message, pending: false })
-            byId.set(existing.id, existing)
+            byId.set(messageId, existing)
           } else {
-            byId.set(message.id, { ...message, pending: false })
+            byId.set(messageId, { ...message, pending: false })
           }
         }
         return Array.from(byId.values())
@@ -238,7 +272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // Update profile if returned
       if (result.profiles && result.profiles.length > 0) {
-        const profileData = result.profiles[0] as unknown as Profile
+        const profileData = result.profiles[0] as unknown as APIProfile
         setProfile(profileData)
         setState((prev) => ({
           ...prev,
@@ -251,14 +285,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [],
   )
 
-  const applySendResults = useCallback((actions: PendingAction[], records: any[]) => {
+  const applySendResults = useCallback((actions: PendingAction[], records: Record<string, unknown>[]) => {
     if (!actions.length) return
     setMessages((prev) => {
       const byId = new Map(prev.map((msg) => [msg.id, msg]))
       records.forEach((record) => {
         const match = actions.find((action) => action.id === record.client_id)
         if (match) {
-          byId.set(match.id, { ...record, pending: false })
+          byId.set(match.id, { ...(record as MessageRecord), pending: false })
         }
       })
       return Array.from(byId.values())
@@ -512,18 +546,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
       waypoints: [], // Waypoints are managed separately
     }))
 
+    const uiGeofences: Geofence[] = backendGeofences.map((geofence) => ({
+      id: geofence.id,
+      name: geofence.name,
+      description: geofence.description || "",
+      latitude: geofence.latitude,
+      longitude: geofence.longitude,
+      radiusMeters: geofence.radius_meters,
+      enabled: geofence.enabled,
+      notifyOnEntry: geofence.notify_on_entry,
+      notifyOnExit: geofence.notify_on_exit,
+      createdAt: new Date(geofence.created_at),
+    }))
+
     setState((prev) => ({
       ...prev,
       waypoints: uiWaypoints,
       groups: uiGroups,
+      geofences: uiGeofences,
     }))
-  }, [backendWaypoints, backendGroups])
+  }, [backendWaypoints, backendGroups, backendGeofences])
 
   const contextValue = useMemo<AppContextValue>(
     () => ({
       ...state,
       session,
       user,
+      profile,
       pendingActions: pending,
       syncStatus: status,
       lastSyncedAt,
@@ -539,7 +588,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       triggerSOS,
       cancelSOS,
     }),
-    [addWaypoint, cancelSOS, checkIn, createGeofence, createGroup, endTrip, lastSyncedAt, pending, refresh, session, signIn, signOut, startTrip, state, status, user],
+    [
+      addWaypoint,
+      cancelSOS,
+      checkIn,
+      createGeofence,
+      createGroup,
+      endTrip,
+      lastSyncedAt,
+      pending,
+      profile,
+      refresh,
+      session,
+      signIn,
+      signOut,
+      startTrip,
+      state,
+      status,
+      user,
+    ],
   )
 
   return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>

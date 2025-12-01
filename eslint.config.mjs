@@ -5,7 +5,17 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/node_modules/**', '.next', 'dist', 'build', 'coverage'],
+    ignores: [
+      '**/node_modules/**',
+      '.next',
+      '**/.next/**',
+      'dist',
+      'build',
+      'coverage',
+      '**/coverage/**',
+      'android',
+      'ios',
+    ],
   },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended, nextPlugin.configs.recommended],
