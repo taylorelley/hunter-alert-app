@@ -9,6 +9,10 @@ import { PendingAction, SyncStatus } from "./types"
 import { NetworkState } from "@/components/network-provider"
 import { appConfig } from "@/lib/config/env"
 
+function isMessageDraft(payload: Record<string, unknown>): payload is MessageDraft {
+  return typeof payload.conversation_id === "string" && typeof payload.body === "string"
+}
+
 interface SyncEngineOptions {
   client: SupabaseClient | null
   network: NetworkState
@@ -66,7 +70,9 @@ export function useSyncEngine({
       const sendable = pending.filter((action) => action.type === "SEND_MESSAGE")
       if (sendable.length > 0) {
         const drafts: MessageDraft[] = sendable.map((action) => ({
-          ...(action.payload as unknown as MessageDraft),
+          ...(isMessageDraft(action.payload as Record<string, unknown>)
+            ? action.payload
+            : { conversation_id: "", body: "" }),
           client_id: action.id,
         }))
 

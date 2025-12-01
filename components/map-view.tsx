@@ -17,8 +17,33 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { useApp } from "./app-provider"
+import { useApp, type Waypoint } from "./app-provider"
 import { cn } from "@/lib/utils"
+
+const WAYPOINT_ICONS: Record<Waypoint["type"], typeof MapPin> = {
+  camp: Tent,
+  vehicle: Car,
+  hazard: AlertTriangle,
+  water: Droplets,
+  viewpoint: Eye,
+  custom: MapPin,
+}
+
+const WAYPOINT_POSITIONS = [
+  { top: "30%", left: "25%" },
+  { top: "65%", left: "70%" },
+  { top: "45%", left: "60%" },
+] as const
+
+const HUNTER_POSITIONS = [
+  { top: "35%", left: "40%" },
+  { top: "55%", left: "75%" },
+] as const
+
+const NEARBY_HUNTERS = [
+  { id: "1", name: "Tom W.", distance: "0.8 mi", bearing: "NW", lastCheckIn: "15m ago" },
+  { id: "2", name: "Dave B.", distance: "1.2 mi", bearing: "E", lastCheckIn: "32m ago" },
+]
 
 interface MapViewProps {
   onAddWaypoint: () => void
@@ -30,20 +55,6 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
   const [activeLayer, setActiveLayer] = useState<"terrain" | "satellite">("terrain")
   const [showNearbyHunters, setShowNearbyHunters] = useState(true)
   const [selectedWaypoint, setSelectedWaypoint] = useState<string | null>(null)
-
-  const nearbyHunters = [
-    { id: "1", name: "Tom W.", distance: "0.8 mi", bearing: "NW", lastCheckIn: "15m ago" },
-    { id: "2", name: "Dave B.", distance: "1.2 mi", bearing: "E", lastCheckIn: "32m ago" },
-  ]
-
-  const waypointIcons = {
-    camp: Tent,
-    vehicle: Car,
-    hazard: AlertTriangle,
-    water: Droplets,
-    viewpoint: Eye,
-    custom: MapPin,
-  }
 
   return (
     <div className="flex-1 relative overflow-hidden">
@@ -76,13 +87,8 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
 
         {/* Waypoint markers */}
         {waypoints.map((waypoint, index) => {
-          const Icon = waypointIcons[waypoint.type as keyof typeof waypointIcons] || MapPin
-          const positions = [
-            { top: "30%", left: "25%" },
-            { top: "65%", left: "70%" },
-            { top: "45%", left: "60%" },
-          ]
-          const pos = positions[index % positions.length]
+          const Icon = WAYPOINT_ICONS[waypoint.type] || MapPin
+          const pos = WAYPOINT_POSITIONS[index % WAYPOINT_POSITIONS.length]
 
           return (
             <button
@@ -113,12 +119,8 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
 
         {/* Nearby hunters */}
         {showNearbyHunters &&
-          nearbyHunters.map((hunter, index) => {
-            const positions = [
-              { top: "35%", left: "40%" },
-              { top: "55%", left: "75%" },
-            ]
-            const pos = positions[index % positions.length]
+          NEARBY_HUNTERS.map((hunter, index) => {
+            const pos = HUNTER_POSITIONS[index % HUNTER_POSITIONS.length]
 
             return (
               <button
@@ -215,7 +217,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
               {(() => {
                 const waypoint = waypoints.find((w) => w.id === selectedWaypoint)
                 if (!waypoint) return null
-                const Icon = waypointIcons[waypoint.type as keyof typeof waypointIcons] || MapPin
+                const Icon = WAYPOINT_ICONS[waypoint.type] || MapPin
 
                 return (
                   <div className="flex items-start gap-3">
@@ -266,10 +268,10 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
           <Card className="bg-card/95 backdrop-blur shadow-lg">
             <CardContent className="p-3">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Nearby Hunters ({nearbyHunters.length})
+                Nearby Hunters ({NEARBY_HUNTERS.length})
               </h3>
               <div className="space-y-2">
-                {nearbyHunters.map((hunter) => (
+                {NEARBY_HUNTERS.map((hunter) => (
                   <div key={hunter.id} className="flex items-center gap-3 text-sm">
                     <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-xs font-medium">
                       {hunter.name.charAt(0)}

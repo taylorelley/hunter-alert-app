@@ -8,8 +8,10 @@ name: Build iOS IPA
 # - IOS_PROVISIONING_PROFILE_BASE64: Base64-encoded provisioning profile (.mobileprovision)
 # - IOS_PROVISIONING_PROFILE_NAME: Provisioning profile name (for PROVISIONING_PROFILE_SPECIFIER)
 # - APPLE_TEAM_ID: Apple Developer Team ID
-# - APPLE_ID: Apple ID email used for signing/export
-# - APPLE_APP_SPECIFIC_PASSWORD: App-specific password for Apple ID
+# - IOS_BUNDLE_ID: iOS bundle identifier used for signing (e.g., com.example.app)
+# - APP_STORE_CONNECT_KEY_ID: (Optional) App Store Connect API key ID for automated authentication
+# - APP_STORE_CONNECT_KEY_ISSUER_ID: (Optional) App Store Connect API key issuer ID
+# - APP_STORE_CONNECT_KEY_BASE64: (Optional) Base64-encoded App Store Connect API key (.p8) stored on the runner
 # Set these in: Repository Settings → Secrets and variables → Actions
 
 on:
@@ -105,10 +107,15 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           IOS_PROVISIONING_PROFILE_NAME: ${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
         run: |
           EXPORT_OPTIONS="$RUNNER_TEMP/ExportOptions.plist"
+          BUNDLE_ID="${IOS_BUNDLE_ID:-com.hunteralert.app}"
+          AUTH_KEY_PATH=""
+
           cat > "$EXPORT_OPTIONS" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -122,17 +129,30 @@ jobs:
             <string>$APPLE_TEAM_ID</string>
             <key>provisioningProfiles</key>
             <dict>
-              <key>com.hunteralert.app</key>
+              <key>$BUNDLE_ID</key>
               <string>$IOS_PROVISIONING_PROFILE_NAME</string>
             </dict>
             <key>signingCertificate</key>
             <string>Apple Distribution</string>
             <key>uploadSymbols</key>
             <true/>
-            <key>appleIDAccountName</key>
-            <string>$APPLE_ID</string>
-            <key>appleIDPassword</key>
-            <string>$APPLE_APP_SPECIFIC_PASSWORD</string>
+          EOF
+
+          if [[ -n "$APP_STORE_CONNECT_KEY_ID" && -n "$APP_STORE_CONNECT_KEY_ISSUER_ID" && -n "$APP_STORE_CONNECT_KEY_BASE64" ]]; then
+            AUTH_KEY_PATH="$RUNNER_TEMP/AuthKey_$APP_STORE_CONNECT_KEY_ID.p8"
+            echo "$APP_STORE_CONNECT_KEY_BASE64" | base64 --decode > "$AUTH_KEY_PATH"
+
+            cat >> "$EXPORT_OPTIONS" <<EOF
+            <key>authenticationKeyID</key>
+            <string>$APP_STORE_CONNECT_KEY_ID</string>
+            <key>authenticationKeyIssuerID</key>
+            <string>$APP_STORE_CONNECT_KEY_ISSUER_ID</string>
+            <key>authenticationKeyPath</key>
+            <string>$AUTH_KEY_PATH</string>
+          EOF
+          fi
+
+          cat >> "$EXPORT_OPTIONS" <<'EOF'
           </dict>
           </plist>
           EOF

@@ -138,7 +138,8 @@ function parseDate(value: unknown, fallback = new Date()): Date {
 
 function mapConversationToTrip(conversation: ConversationRecord, messages: MessageRecord[]): Trip {
   const metadata = (conversation.metadata as Record<string, unknown> | null) ?? {}
-  const cadence = Number(metadata.checkInCadence ?? 4)
+  const rawCadence = Number(metadata.checkInCadence ?? 4)
+  const cadence = Number.isFinite(rawCadence) ? rawCadence : 4
   const startDate = parseDate(metadata.startDate, new Date())
   const endDate = parseDate(metadata.endDate, new Date(startDate.getTime() + 3 * 24 * 60 * 60 * 1000))
   const emergencyContacts = Array.isArray(metadata.emergencyContacts)

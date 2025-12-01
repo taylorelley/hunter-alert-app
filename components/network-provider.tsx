@@ -12,6 +12,7 @@ import {
 } from "react"
 import { Capacitor } from "@capacitor/core"
 import NetworkMonitor from "@/lib/capacitor/network-monitor"
+import type { NavigatorWithConnection } from "@/lib/network-information"
 
 export type NetworkConnectivity = "offline" | "wifi" | "cellular" | "satellite"
 
@@ -21,15 +22,6 @@ export interface NetworkState {
   ultraConstrained: boolean
   expensive?: boolean
   lastUpdated: number
-}
-
-interface NetworkInformationLike {
-  type?: string
-  effectiveType?: string
-  saveData?: boolean
-  downlink?: number
-  addEventListener?: (event: string, listener: () => void) => void
-  removeEventListener?: (event: string, listener: () => void) => void
 }
 
 const DEFAULT_STATE: NetworkState = {
@@ -60,13 +52,15 @@ async function computeNetworkState(): Promise<NetworkState> {
   }
 
   // Web fallback using browser APIs
-  const connection = (navigator as Navigator & { connection?: NetworkInformationLike }).connection
+  const connection = (navigator as NavigatorWithConnection).connection
   const online = navigator.onLine
   const type = connection?.type as string | undefined
   const effective = connection?.effectiveType as string | undefined
   const saveData = Boolean(connection?.saveData)
   const constrained = saveData || ["2g", "slow-2g"].includes(effective || "")
-  const ultraConstrained = Boolean(constrained && (effective === "slow-2g" || (connection?.downlink ?? 1) < 0.5))
+  const ultraConstrained = Boolean(
+    type === "satellite" || (constrained && (effective === "slow-2g" || (connection?.downlink ?? 1) < 0.5)),
+  )
 
   let connectivity: NetworkConnectivity = "wifi"
   if (!online) {
@@ -123,7 +117,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
 
     // Web fallback listeners
     const handleOnline = () => refreshRef.current?.()
-    const connection = (navigator as Navigator & { connection?: NetworkInformationLike }).connection
+    const connection = (navigator as NavigatorWithConnection).connection
 
     window.addEventListener("online", handleOnline)
     window.addEventListener("offline", handleOnline)
