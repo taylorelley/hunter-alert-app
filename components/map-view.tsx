@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import maplibregl, { Map, Marker, type RequestParameters } from "maplibre-gl"
+import maplibregl, { Map as MaplibreMap, Marker, type RequestParameters } from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import {
   MapPin,
@@ -115,7 +115,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null)
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<Map | null>(null)
+  const mapRef = useRef<MaplibreMap | null>(null)
   const waypointMarkersRef = useRef<Marker[]>([])
   const memberMarkersRef = useRef<Marker[]>([])
   const userMarkerRef = useRef<Marker | null>(null)
@@ -147,7 +147,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
     waypointMarkersRef.current = waypoints.map((waypoint) => {
       const marker = new maplibregl.Marker({ color: WAYPOINT_COLORS[waypoint.type] })
         .setLngLat([waypoint.coordinates.lng, waypoint.coordinates.lat])
-        .addTo(mapRef.current as Map)
+        .addTo(mapRef.current as MaplibreMap)
 
       marker.getElement().classList.add("cursor-pointer")
       marker.getElement().addEventListener("click", () =>
@@ -172,7 +172,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
       const marker = new maplibregl.Marker({ color: "#16a34a" })
         .setLngLat([member.coordinates.lng, member.coordinates.lat])
         .setPopup(new maplibregl.Popup({ closeButton: false }).setText(member.name))
-        .addTo(mapRef.current as Map)
+        .addTo(mapRef.current as MaplibreMap)
 
       return marker
     })
@@ -202,7 +202,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
     return () => {
       map.remove()
     }
-  }, [activeLayer])
+  }, [])
 
   useEffect(() => {
     if (!mapRef.current) return
@@ -283,6 +283,12 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
       mapRef.current.easeTo({ center: [userLocation.longitude, userLocation.latitude], duration: 500, zoom: 12 })
     }
   }, [userLocation])
+
+  const centerOnWaypoint = useCallback((wp: Waypoint) => {
+    if (mapRef.current) {
+      mapRef.current.easeTo({ center: [wp.coordinates.lng, wp.coordinates.lat], duration: 500, zoom: 14 })
+    }
+  }, [])
 
   return (
     <div className="flex-1 relative overflow-hidden">
@@ -394,7 +400,11 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
                       <h3 className="font-semibold">{waypoint.name}</h3>
                       <p className="text-sm text-muted-foreground">{waypoint.notes}</p>
                       <div className="flex items-center gap-2 mt-2">
-                        <Button size="sm" variant="outline" onClick={centerOnUser}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => waypoint && centerOnWaypoint(waypoint)}
+                        >
                           <Navigation className="w-4 h-4 mr-1" />
                           Navigate
                         </Button>

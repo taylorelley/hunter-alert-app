@@ -577,7 +577,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdAt: new Date(geofence.created_at),
     }))
 
-    const uiMemberLocations: MemberLocation[] = backendProfiles
+    const uiMemberLocations = backendProfiles
       .map((profile) => {
         const metadata = (profile as Record<string, unknown>).metadata as Record<string, unknown> | undefined
         const lastLocation = (metadata?.last_location || metadata?.lastLocation) as Record<string, unknown> | undefined
