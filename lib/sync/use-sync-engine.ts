@@ -97,10 +97,10 @@ export function useSyncEngine({
       console.error("Sync failed", error)
       setStatus("backoff")
       const baseDelay = SYNC_LIMITS.syncBaseBackoffMs.value
-      failureCountRef.current += 1
       const attempt = Math.min(failureCountRef.current, 4)
       const modeMultiplier = network.ultraConstrained ? 4 : network.constrained ? 2 : 1
       const delay = baseDelay * modeMultiplier * 2 ** attempt
+      failureCountRef.current += 1
       backoffRef.current = setTimeout(() => {
         syncingRef.current = false
         flush()

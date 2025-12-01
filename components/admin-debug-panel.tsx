@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactElement } from "react"
 import { AlertTriangle, CheckCircle2, Gauge } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { appConfig, missingRequiredEnv } from "@/lib/config/env"
@@ -37,7 +38,7 @@ const SETTINGS = [
   },
 ]
 
-export function AdminDebugPanel(): JSX.Element {
+export function AdminDebugPanel(): ReactElement {
   const missing = missingRequiredEnv
   const statusIcon = missing.length === 0 ? (
     <CheckCircle2 className="w-4 h-4 text-safe" aria-hidden />
