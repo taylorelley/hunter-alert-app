@@ -24,6 +24,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { useApp } from "./app-provider"
 import { useNetwork } from "./network-provider"
+import { AdminDebugPanel } from "./admin-debug-panel"
 
 export function ProfileView() {
   const { userName, isPremium, emergencyContacts, signIn, signOut, session } = useApp()
@@ -36,6 +37,7 @@ export function ProfileView() {
   const [password, setPassword] = useState("")
   const [authError, setAuthError] = useState<string | null>(null)
   const [authLoading, setAuthLoading] = useState(false)
+  const showAdminDebug = process.env.NEXT_PUBLIC_ENABLE_ADMIN_DEBUG === "true"
 
   const handleSignIn = async () => {
     setAuthError(null)
@@ -290,6 +292,9 @@ export function ProfileView() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Admin Debug */}
+        {showAdminDebug && <AdminDebugPanel />}
 
         {/* Sign Out */}
         <Button

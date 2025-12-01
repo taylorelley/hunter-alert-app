@@ -1,8 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { appConfig } from '@/lib/config/env';
 import { AuthResult, MessageDraft, PullUpdatesResult, Group, Waypoint, Geofence } from './types';
 
-const DEFAULT_BATCH_LIMIT = Number.parseInt(process.env.BACKEND_MAX_MESSAGE_BATCH || '20', 10);
-const DEFAULT_PULL_LIMIT = Number.parseInt(process.env.BACKEND_MAX_PULL_LIMIT || '100', 10);
+const DEFAULT_BATCH_LIMIT = appConfig.constraints.backendMaxMessageBatch.value;
+const DEFAULT_PULL_LIMIT = appConfig.constraints.backendMaxPullLimit.value;
 
 function clampBatch(messages: MessageDraft[], limit: number): MessageDraft[] {
   return messages.slice(0, Math.max(limit, 1));

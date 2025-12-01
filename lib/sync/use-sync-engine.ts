@@ -7,6 +7,7 @@ import { MessageDraft, PullUpdatesResult } from "../supabase/types"
 import { persistPendingActions, readPendingActions } from "./pending-actions"
 import { PendingAction, SyncStatus } from "./types"
 import { NetworkState } from "@/components/network-provider"
+import { appConfig } from "@/lib/config/env"
 
 interface SyncEngineOptions {
   client: SupabaseClient | null
@@ -18,7 +19,7 @@ interface SyncEngineOptions {
   onSendApplied?: (actions: PendingAction[], records: any[]) => void
 }
 
-const BASE_BACKOFF_MS = 5000
+const SYNC_LIMITS = appConfig.constraints
 
 export function useSyncEngine({
   client,
@@ -34,6 +35,7 @@ export function useSyncEngine({
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const backoffRef = useRef<NodeJS.Timeout | null>(null)
   const syncingRef = useRef(false)
+  const failureCountRef = useRef(0)
 
   const canSync = useMemo(() => network.connectivity !== "offline" && sessionReady && !!client, [client, network, sessionReady])
 
@@ -68,8 +70,15 @@ export function useSyncEngine({
           client_id: action.id,
         }))
 
-        const maxBatch = network.ultraConstrained ? 3 : network.constrained ? 5 : undefined
-        const response = await sendBatch(client, drafts, maxBatch)
+        const constrainedBatch = Math.min(
+          SYNC_LIMITS.backendMaxMessageBatch.value,
+          network.ultraConstrained
+            ? SYNC_LIMITS.syncUltraBatchLimit.value
+            : network.constrained
+              ? SYNC_LIMITS.syncSatelliteBatchLimit.value
+              : SYNC_LIMITS.syncNormalBatchLimit.value,
+        )
+        const response = await sendBatch(client, drafts, constrainedBatch)
         if (onSendApplied) {
           onSendApplied(sendable, response.data ?? [])
         }
@@ -83,10 +92,15 @@ export function useSyncEngine({
       onPullApplied?.(updates)
       setStatus("idle")
       backoffRef.current && clearTimeout(backoffRef.current)
+      failureCountRef.current = 0
     } catch (error) {
       console.error("Sync failed", error)
       setStatus("backoff")
-      const delay = network.ultraConstrained ? BASE_BACKOFF_MS * 4 : network.constrained ? BASE_BACKOFF_MS * 2 : BASE_BACKOFF_MS
+      const baseDelay = SYNC_LIMITS.syncBaseBackoffMs.value
+      const attempt = Math.min(failureCountRef.current, 4)
+      const modeMultiplier = network.ultraConstrained ? 4 : network.constrained ? 2 : 1
+      const delay = baseDelay * modeMultiplier * 2 ** attempt
+      failureCountRef.current += 1
       backoffRef.current = setTimeout(() => {
         syncingRef.current = false
         flush()

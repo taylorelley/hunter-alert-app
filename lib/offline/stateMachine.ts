@@ -1,3 +1,5 @@
+import { appConfig } from '@/lib/config/env';
+
 export type NetworkConnectivity = 'offline' | 'wifi' | 'cellular' | 'satellite';
 
 export type NetworkState = {
@@ -33,8 +35,14 @@ export class SyncStateMachine {
 
   constructor(initialNetwork: NetworkState, options: SyncEngineOptions = {}) {
     this.state = this.deriveState(initialNetwork);
-    this.satelliteBatchLimit = Math.max(options.satelliteBatchLimit ?? 5, 1);
-    this.normalBatchLimit = Math.max(options.normalBatchLimit ?? 10, 1);
+    this.satelliteBatchLimit = Math.max(
+      options.satelliteBatchLimit ?? appConfig.constraints.syncSatelliteBatchLimit.value,
+      1,
+    );
+    this.normalBatchLimit = Math.max(
+      options.normalBatchLimit ?? appConfig.constraints.syncNormalBatchLimit.value,
+      1,
+    );
   }
 
   get currentState(): SyncState {
