@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Validate platform flags
+        run: pnpm run ci:platform-flags
+
       - name: Build Next.js app
         run: pnpm build
         env:
@@ -52,6 +55,9 @@ jobs:
 
       - name: Sync Capacitor
         run: npx cap sync android
+
+      - name: Verify Capacitor plugin bridges
+        run: pnpm run ci:capacitor-bridge
 
       - name: Setup keystore
         run: |
