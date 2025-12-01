@@ -579,7 +579,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const uiMemberLocations = backendProfiles
       .map((profile) => {
-        const metadata = (profile as Record<string, unknown>).metadata as Record<string, unknown> | undefined
+        const metadata = (profile as unknown as { metadata?: Record<string, unknown> }).metadata
         const lastLocation = (metadata?.last_location || metadata?.lastLocation) as Record<string, unknown> | undefined
 
         const lat = typeof lastLocation?.latitude === "number" ? lastLocation.latitude : Number(lastLocation?.lat)
