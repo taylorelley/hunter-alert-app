@@ -41,7 +41,7 @@ jobs:
         run: pnpm build
 
       - name: Lint Supabase backend scripts
-        run: npm run lint --prefix backend
+        run: pnpm --prefix backend run lint
 
       - name: Upload Vitest coverage
         if: always()
