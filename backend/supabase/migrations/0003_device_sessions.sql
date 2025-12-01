@@ -202,7 +202,7 @@ begin
           )
         )
           and (since is null or updated_at > since)
-        order by created_at asc
+        order by updated_at asc
         limit max_rows
       ) as ga
     ),

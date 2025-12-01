@@ -5,7 +5,11 @@ const STORE_KEY = "device_sessions_cache"
 
 export async function readCachedDeviceSessions(): Promise<DeviceSession[]> {
   try {
-    return (await get<DeviceSession[]>(STORE_KEY)) ?? []
+    const cached = await get<DeviceSession[]>(STORE_KEY)
+    if (Array.isArray(cached) && cached.every((session) => typeof session?.id === "string")) {
+      return cached
+    }
+    return []
   } catch (error) {
     console.warn("Unable to read cached device sessions", error)
     return []

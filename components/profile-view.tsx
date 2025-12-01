@@ -99,7 +99,7 @@ export function ProfileView() {
     }
   }
 
-  const otherSessions = deviceSessions.filter((session) => !session.isCurrent)
+  const otherSessions = deviceSessions.filter((deviceSession) => !deviceSession.isCurrent)
 
   return (
     <div className="flex-1 overflow-y-auto pb-24">

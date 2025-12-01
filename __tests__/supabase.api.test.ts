@@ -1,16 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import { authenticate, pullUpdates, sendBatch } from '../lib/supabase/api';
+import { authenticate, listDeviceSessions, pullUpdates, recordDeviceSession, revokeDeviceSession, sendBatch } from '../lib/supabase/api';
 import { MessageDraft } from '../lib/supabase/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 describe('supabase api wrapper', () => {
   const mockClient = () => {
     const rpc = vi.fn();
+    const order = vi.fn().mockResolvedValue({ data: [], error: null });
+    const select = vi.fn(() => ({ order }));
+    const from = vi.fn(() => ({ select }));
     const auth = {
       signInWithPassword: vi.fn(),
       getSession: vi.fn().mockResolvedValue({ data: { session: {} }, error: null }),
     } as unknown as SupabaseClient['auth'];
-    return { rpc, auth } as unknown as SupabaseClient;
+    return { rpc, auth, from } as unknown as SupabaseClient;
   };
 
   it('authenticates and returns user/session payload', async () => {
@@ -113,6 +116,54 @@ describe('supabase api wrapper', () => {
     expect(result.dropped).toEqual([
       expect.objectContaining({ draft: drafts[1], reason: 'oversize' }),
     ]);
+  });
+
+  it('records a device session via RPC', async () => {
+    const client = mockClient();
+    const sessionRecord = { id: 'ds-1', client_session_id: 'client-1' };
+    (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: sessionRecord, error: null });
+
+    const result = await recordDeviceSession(client, {
+      client_session_id: 'client-1',
+      device_model: 'iPhone',
+      platform: 'ios',
+      os_version: '17.0',
+    });
+
+    expect(client.rpc).toHaveBeenCalledWith('record_device_session', expect.any(Object));
+    expect(result).toEqual(sessionRecord);
+  });
+
+  it('revokes a device session via RPC', async () => {
+    const client = mockClient();
+    const revoked = { id: 'ds-1', revoked_at: new Date().toISOString() };
+    (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: revoked, error: null });
+
+    const result = await revokeDeviceSession(client, 'ds-1');
+
+    expect(client.rpc).toHaveBeenCalledWith('revoke_device_session', { target_id: 'ds-1' });
+    expect(result).toEqual(revoked);
+  });
+
+  it('lists device sessions after verifying auth session', async () => {
+    const client = mockClient();
+    (client.from as unknown as ReturnType<typeof vi.fn>)().select().order.mockResolvedValue({
+      data: [{ id: 'ds-1' }],
+      error: null,
+    });
+
+    const result = await listDeviceSessions(client);
+
+    expect(client.auth.getSession).toHaveBeenCalled();
+    expect(client.from).toHaveBeenCalledWith('device_sessions');
+    expect(result).toEqual([{ id: 'ds-1' }]);
+  });
+
+  it('throws when listing device sessions without auth session', async () => {
+    const client = mockClient();
+    (client.auth.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: null }, error: null });
+
+    await expect(listDeviceSessions(client)).rejects.toThrow('Cannot list device sessions without an active session');
   });
 
   it('slices pull_updates responses to maxRows and handles missing collections', async () => {

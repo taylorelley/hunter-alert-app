@@ -264,7 +264,7 @@ async function getDeviceDescriptor() {
       model: info.model || info.name || "Unknown device",
       platform: info.platform || info.operatingSystem || "unknown",
       osVersion: info.osVersion || info.operatingSystem || "",
-      appVersion: info.appVersion || process.env.NEXT_PUBLIC_APP_VERSION || null,
+      appVersion: process.env.NEXT_PUBLIC_APP_VERSION || null,
       metadata: {
         manufacturer: info.manufacturer,
         platform: info.platform,
@@ -462,7 +462,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const records = await listDeviceSessions(supabase)
       setBackendDeviceSessions((prev) => mergeRecords(prev, records))
     } catch (error) {
-      console.warn("Unable to refresh device sessions", error)
+      console.warn("Unable to refresh device sessions:", error instanceof Error ? error.message : error)
     }
   }, [session, supabase])
 
@@ -676,10 +676,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (user && session) {
       refreshProfile()
       flush()
-      upsertDeviceSession()
-      refreshDeviceSessions()
     }
-  }, [flush, refreshDeviceSessions, refreshProfile, session, upsertDeviceSession, user])
+  }, [flush, refreshProfile, session, user])
 
   useEffect(() => {
     if (!conversations.length) {
