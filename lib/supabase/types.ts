@@ -69,6 +69,31 @@ export interface Profile {
     showOnMap: boolean;
     notifyContacts: boolean;
   };
+  metadata?: {
+    last_location?: {
+      latitude?: number;
+      longitude?: number;
+      lat?: number;
+      lng?: number;
+      accuracy?: number;
+      heading?: number;
+      updated_at?: string;
+      timestamp?: string;
+      [key: string]: unknown;
+    };
+    lastLocation?: {
+      latitude?: number;
+      longitude?: number;
+      lat?: number;
+      lng?: number;
+      accuracy?: number;
+      heading?: number;
+      updated_at?: string;
+      timestamp?: string;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
   created_at: string;
   updated_at: string;
 }
