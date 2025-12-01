@@ -47,9 +47,7 @@ function getMessageSizeBytes(message: MessageDraft): number | null {
 
   try {
     const serializedMetadata = JSON.stringify(message.metadata);
-    const metadataBytes = serializedMetadata
-      ? textEncoder.encode(serializedMetadata).byteLength
-      : 0;
+    const metadataBytes = textEncoder.encode(serializedMetadata).byteLength;
     return bodyBytes + metadataBytes;
   } catch (error) {
     console.warn('Unable to serialize message metadata; dropping message', error);
@@ -127,19 +125,30 @@ export async function sendBatch(
     return { data: [], error: null, dropped: rejected };
   }
 
-  const { data, error } = await client.rpc('send_message_batch', {
-    messages: payload,
-  });
+  const { data: sessionResult } = await client.auth.getSession();
 
-  if (error) {
-    throw error;
+  if (!sessionResult?.session) {
+    throw new Error('Cannot send messages without an active session');
   }
 
-  return {
-    data: (data ?? []) as Record<string, unknown>[],
-    error: null,
-    dropped: rejected,
-  };
+  try {
+    const { data, error } = await client.rpc('send_message_batch', {
+      messages: payload,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return {
+      data: (data ?? []) as Record<string, unknown>[],
+      error: null,
+      dropped: rejected,
+    };
+  } catch (err) {
+    console.error('sendBatch failed:', err);
+    throw err;
+  }
 }
 
 /**

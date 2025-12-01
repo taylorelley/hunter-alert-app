@@ -6,7 +6,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 describe('supabase api wrapper', () => {
   const mockClient = () => {
     const rpc = vi.fn();
-    const auth = { signInWithPassword: vi.fn() } as unknown as SupabaseClient['auth'];
+    const auth = {
+      signInWithPassword: vi.fn(),
+      getSession: vi.fn().mockResolvedValue({ data: { session: {} }, error: null }),
+    } as unknown as SupabaseClient['auth'];
     return { rpc, auth } as unknown as SupabaseClient;
   };
 
