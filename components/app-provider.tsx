@@ -1163,6 +1163,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       state,
       status,
       user,
+      triggerSOS,
       resolveSOS,
     ],
   )

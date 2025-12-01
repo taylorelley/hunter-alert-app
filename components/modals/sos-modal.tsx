@@ -62,6 +62,42 @@ export function SOSModal({ isOpen, onClose }: SOSModalProps) {
     }
   }, [isCountingDown, sosStatus])
 
+  const deliveryStatus = useMemo(() => {
+    switch (sosStatus) {
+      case "queued":
+        return "Queued for sync—will send when network allows"
+      case "sending":
+        return "Sending alert to Supabase..."
+      case "delivered":
+        return "Alert delivered to backend"
+      case "canceled":
+        return "SOS canceled and contacts notified"
+      case "resolved":
+        return "SOS resolved and contacts notified"
+      case "failed":
+        return "Delivery failed—will retry when online"
+      default:
+        return "Not sent yet"
+    }
+  }, [sosStatus])
+
+  const statusBadgeClass = useMemo(() => {
+    switch (sosStatus) {
+      case "delivered":
+        return "bg-primary/10 text-primary"
+      case "queued":
+      case "sending":
+        return "bg-warning/20 text-warning"
+      case "canceled":
+      case "resolved":
+        return "bg-safe/20 text-safe"
+      case "failed":
+        return "bg-danger/20 text-danger"
+      default:
+        return "bg-muted text-foreground"
+    }
+  }, [sosStatus])
+
   if (!isOpen) return null
 
   const handleStartSOS = (type: "full" | "silent") => {
@@ -99,42 +135,6 @@ export function SOSModal({ isOpen, onClose }: SOSModalProps) {
       setIsSubmitting(false)
     }
   }
-
-  const deliveryStatus = useMemo(() => {
-    switch (sosStatus) {
-      case "queued":
-        return "Queued for sync—will send when network allows"
-      case "sending":
-        return "Sending alert to Supabase..."
-      case "delivered":
-        return "Alert delivered to backend"
-      case "canceled":
-        return "SOS canceled and contacts notified"
-      case "resolved":
-        return "SOS resolved and contacts notified"
-      case "failed":
-        return "Delivery failed—will retry when online"
-      default:
-        return "Not sent yet"
-    }
-  }, [sosStatus])
-
-  const statusBadgeClass = useMemo(() => {
-    switch (sosStatus) {
-      case "delivered":
-        return "bg-primary/10 text-primary"
-      case "queued":
-      case "sending":
-        return "bg-warning/20 text-warning"
-      case "canceled":
-      case "resolved":
-        return "bg-safe/20 text-safe"
-      case "failed":
-        return "bg-danger/20 text-danger"
-      default:
-        return "bg-muted text-foreground"
-    }
-  }, [sosStatus])
 
   return (
     <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm">

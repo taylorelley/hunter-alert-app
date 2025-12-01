@@ -73,27 +73,40 @@ export function useSyncEngine({
         (action) => action.type === "SEND_MESSAGE" || action.type === "SEND_ALERT",
       )
       if (sendable.length > 0) {
-        const drafts: MessageDraft[] = sendable.map((action) => {
-          if (isMessageDraft(action.payload)) {
-            return { ...action.payload, client_id: action.id }
+        const invalidActionIds: string[] = []
+        const validSendable = sendable.filter((action) => {
+          if (!isMessageDraft(action.payload)) {
+            console.warn(`Invalid payload for action ${action.id}, skipping`)
+            invalidActionIds.push(action.id)
+            return false
           }
-
-          return { conversation_id: "", body: "", client_id: action.id }
+          return true
         })
 
-        const constrainedBatch = Math.min(
-          SYNC_LIMITS.backendMaxMessageBatch.value,
-          network.ultraConstrained
-            ? SYNC_LIMITS.syncUltraBatchLimit.value
-            : network.constrained
-              ? SYNC_LIMITS.syncSatelliteBatchLimit.value
-              : SYNC_LIMITS.syncNormalBatchLimit.value,
-        )
-        const response = await sendBatch(client, drafts, constrainedBatch)
-        if (onSendApplied) {
-          onSendApplied(sendable, response.data ?? [])
+        if (invalidActionIds.length > 0) {
+          setPending((current) => current.filter((action) => !invalidActionIds.includes(action.id)))
         }
-        setPending((current) => current.filter((action) => !sendable.some((item) => item.id === action.id)))
+
+        const drafts: MessageDraft[] = validSendable.map((action) => ({
+          ...(action.payload as MessageDraft),
+          client_id: action.id,
+        }))
+
+        if (drafts.length > 0) {
+          const constrainedBatch = Math.min(
+            SYNC_LIMITS.backendMaxMessageBatch.value,
+            network.ultraConstrained
+              ? SYNC_LIMITS.syncUltraBatchLimit.value
+              : network.constrained
+                ? SYNC_LIMITS.syncSatelliteBatchLimit.value
+                : SYNC_LIMITS.syncNormalBatchLimit.value,
+          )
+          const response = await sendBatch(client, drafts, constrainedBatch)
+          if (onSendApplied) {
+            onSendApplied(validSendable, response.data ?? [])
+          }
+          setPending((current) => current.filter((action) => !validSendable.some((item) => item.id === action.id)))
+        }
       }
 
       setStatus("pulling")

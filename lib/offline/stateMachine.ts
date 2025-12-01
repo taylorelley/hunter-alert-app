@@ -1,4 +1,5 @@
 import { appConfig } from '@/lib/config/env';
+import { PendingAction } from '@/lib/sync/types';
 
 export type NetworkConnectivity = 'offline' | 'wifi' | 'cellular' | 'satellite';
 
@@ -7,15 +8,6 @@ export type NetworkState = {
   constrained: boolean;
   ultraConstrained?: boolean;
 };
-
-export type PendingActionType = 'SEND_MESSAGE' | 'SEND_ALERT';
-
-export interface PendingAction {
-  id: string;
-  type: PendingActionType;
-  payload: unknown;
-  createdAt: string;
-}
 
 export type SyncState = 'offline' | 'satellite' | 'normal';
 
