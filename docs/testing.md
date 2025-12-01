@@ -12,10 +12,11 @@ This project prioritizes reliability on constrained networks. The testing strate
   - Queue persistence while offline; batch sizing differences in satellite vs. normal modes.
   - Flush semantics: oldest-first dispatch and preservation of unflushed items.
 
-## Integration tests (next iteration)
-- Simulate a full send/receive loop against a locally running Supabase stack using the RPCs defined in `docs/api.md`.
-- Validate that sync cursors are updated after applying inbound messages and that outbound batches respect `BACKEND_MAX_MESSAGE_BATCH`.
-- Exercise the UI flows that enqueue messages offline, reconnect, and reconcile after `pull_updates`.
+## Integration tests
+- The `__tests__/integration` suite uses Vitest to boot a local Supabase stack via the CLI, apply migrations, and seed a user + conversation.
+- It exercises `send_message_batch` and `pull_updates` end-to-end, checking cursor advancement, client-side batch limits, and replay of queued offline messages.
+- Network throttling is simulated with a DevTools-style fetch harness to emulate high latency and bandwidth caps before asserting backoff/trim behavior.
+- Enable with `RUN_SUPABASE_INTEGRATION=1 pnpm vitest run __tests__/integration --runInBand` (also available via the scheduled/opt-in GitHub Action).
 
 ## Network and resilience tests (targeted/manual)
 - Use `toxiproxy` or browser DevTools throttling to emulate satellite latency and bandwidth caps; verify backoff intervals and batch trimming.
