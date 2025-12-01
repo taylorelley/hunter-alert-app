@@ -1,0 +1,173 @@
+import { beforeAll, afterAll, describe, expect, it } from 'vitest';
+import { createClient } from '@supabase/supabase-js';
+import { sendBatch, pullUpdates } from '../../lib/supabase/api';
+import {
+  createThrottledFetch,
+  createUserClient,
+  startSupabaseStack,
+  stopSupabaseStack,
+  createAdminClient,
+  SupabaseStack,
+} from './utils/supabaseStack';
+
+const RUN = process.env.RUN_SUPABASE_INTEGRATION === '1';
+const describeIfEnabled = RUN ? describe : describe.skip;
+
+const TEST_TIMEOUT = 180_000;
+
+describeIfEnabled('supabase messaging integration', () => {
+  let stack: SupabaseStack;
+  let adminClient: Awaited<ReturnType<typeof createAdminClient>>;
+  let userClient: ReturnType<typeof createClient>;
+  let userId: string;
+  let conversationId: string;
+  let credentials: { email: string; password: string };
+
+  beforeAll(async () => {
+    stack = await startSupabaseStack();
+    adminClient = await createAdminClient(stack);
+
+    credentials = {
+      email: `integration-${Date.now()}@example.com`,
+      password: 'SupabaseIntegration!23',
+    };
+
+    const userContext = await createUserClient(stack, credentials.email, credentials.password);
+    userClient = userContext.client;
+    userId = userContext.userId;
+
+    const { data: conversation, error: conversationError } = await adminClient
+      .from('conversations')
+      .insert({
+        participant_ids: [userId],
+        title: 'Field Operations',
+        metadata: { region: 'integration' },
+      })
+      .select()
+      .single();
+
+    if (conversationError || !conversation) {
+      throw conversationError ?? new Error('Failed to create conversation');
+    }
+
+    conversationId = conversation.id;
+
+    await adminClient
+      .from('sync_cursors')
+      .upsert({
+        user_id: userId,
+        conversation_id: conversationId,
+        last_cursor: new Date(0).toISOString(),
+      })
+      .select()
+      .single();
+  }, TEST_TIMEOUT);
+
+  afterAll(async () => {
+    await userClient?.auth.signOut();
+    await stopSupabaseStack();
+  }, TEST_TIMEOUT);
+
+  it(
+    'sends batches, enforces limits, and returns new rows via pull_updates',
+    async () => {
+      const drafts = [
+        {
+          conversation_id: conversationId,
+          body: 'Ping from constrained link',
+          metadata: { priority: 'low' },
+          client_id: 'client-1',
+          created_at: new Date().toISOString(),
+        },
+        {
+          conversation_id: conversationId,
+          body: 'Follow-up message',
+          metadata: { priority: 'normal' },
+          client_id: 'client-2',
+          created_at: new Date(Date.now() + 1_000).toISOString(),
+        },
+      ];
+
+      const sendResult = await sendBatch(userClient, drafts, 5);
+      expect(sendResult.data?.length).toBe(drafts.length);
+
+      const pullResult = await pullUpdates(userClient, null, 10);
+      expect(pullResult.messages.length).toBeGreaterThanOrEqual(drafts.length);
+      expect(pullResult.conversations.find((c) => c.id === conversationId)).toBeTruthy();
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'rejects oversized batches client-side and preserves queued work for replay',
+    async () => {
+      const queued = Array.from({ length: 6 }, (_, idx) => ({
+        conversation_id: conversationId,
+        body: `queued-message-${idx}`,
+        metadata: { queued: true },
+        client_id: `offline-${idx}`,
+      }));
+
+      await expect(sendBatch(userClient, queued, 5)).rejects.toThrow(/Batch too large/);
+
+      const firstAttempt = await sendBatch(userClient, queued.slice(0, 3), 3);
+      expect(firstAttempt.data?.length).toBe(3);
+
+      const remainingQueue = queued.slice(3);
+      const secondAttempt = await sendBatch(userClient, remainingQueue, 3);
+      expect(secondAttempt.data?.length).toBe(remainingQueue.length);
+
+      const lastCursor = firstAttempt.data?.[firstAttempt.data.length - 1]?.created_at as
+        | string
+        | undefined;
+      if (lastCursor) {
+        const delta = await pullUpdates(userClient, lastCursor, 5);
+        expect(delta.messages.every((m) => new Date(m.created_at) > new Date(lastCursor))).toBe(
+          true,
+        );
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'simulates constrained links with throttling and enforces batch trimming',
+    async () => {
+      const throttledClient = createClient(stack.apiUrl, stack.anonKey, {
+        global: {
+          fetch: createThrottledFetch({ latencyMs: 400, maxPayloadBytes: 1_200 }),
+        },
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+
+      const { error } = await throttledClient.auth.signInWithPassword({
+        email: credentials.email,
+        password: credentials.password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      const bulkyMessages = Array.from({ length: 3 }, (_, idx) => ({
+        conversation_id: conversationId,
+        body: 'x'.repeat(600) + idx,
+        client_id: `bulky-${idx}`,
+      }));
+
+      await expect(sendBatch(throttledClient, bulkyMessages, 3)).rejects.toThrow(
+        /Bandwidth cap exceeded/,
+      );
+
+      const start = performance.now();
+      const trimmed = bulkyMessages.slice(0, 1);
+      const response = await sendBatch(throttledClient, trimmed, 1);
+      expect(response.data?.length).toBe(1);
+      expect(performance.now() - start).toBeGreaterThanOrEqual(350);
+    },
+    TEST_TIMEOUT,
+  );
+});
