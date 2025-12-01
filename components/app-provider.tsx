@@ -284,10 +284,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (result.profiles && result.profiles.length > 0) {
         setBackendProfiles(result.profiles as APIProfile[])
-      }
 
-      // Update profile if returned
-      if (result.profiles && result.profiles.length > 0) {
         const allProfiles = result.profiles as APIProfile[]
         const profileData =
           (session?.user?.id && allProfiles.find((profile) => profile.id === session.user.id)) || allProfiles[0]
@@ -579,8 +576,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const uiMemberLocations = backendProfiles
       .map<MemberLocation | null>((profile) => {
-        const metadata = (profile as unknown as { metadata?: Record<string, unknown> }).metadata
-        const lastLocation = (metadata?.last_location || metadata?.lastLocation) as Record<string, unknown> | undefined
+        const metadata = profile.metadata
+        const lastLocation = metadata?.last_location || metadata?.lastLocation
 
         const lat = typeof lastLocation?.latitude === "number" ? lastLocation.latitude : Number(lastLocation?.lat)
         const lng = typeof lastLocation?.longitude === "number" ? lastLocation.longitude : Number(lastLocation?.lng)

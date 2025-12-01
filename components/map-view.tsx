@@ -56,28 +56,43 @@ function registerTileCacheProtocol() {
 
   maplibregl.addProtocol(TILE_CACHE_PROTOCOL, async (params, controller) => {
     const url = params.url.replace(`${TILE_CACHE_PROTOCOL}://`, "https://")
-    const cache = await caches.open(TILE_CACHE_NAME)
+    try {
+      const cache = await caches.open(TILE_CACHE_NAME)
 
-    const cached = await cache.match(url)
-    if (cached) {
-      const buffer = await cached.arrayBuffer()
+      const cached = await cache.match(url)
+      if (cached) {
+        const buffer = await cached.arrayBuffer()
+        return {
+          data: buffer,
+          cacheControl: cached.headers.get("Cache-Control"),
+          expires: cached.headers.get("Expires"),
+        }
+      }
+
+      const response = await fetch(url, { signal: controller.signal })
+      if (!response.ok) throw new Error(`Tile fetch failed: ${response.status}`)
+
+      cache.put(url, response.clone())
+      const buffer = await response.arrayBuffer()
+
       return {
         data: buffer,
-        cacheControl: cached.headers.get("Cache-Control"),
-        expires: cached.headers.get("Expires"),
+        cacheControl: response.headers.get("Cache-Control"),
+        expires: response.headers.get("Expires"),
       }
-    }
+    } catch (error) {
+      console.warn("Tile cache unavailable, falling back to direct fetch", error)
 
-    const response = await fetch(url, { signal: controller.signal })
-    if (!response.ok) throw new Error(`Tile fetch failed: ${response.status}`)
+      const response = await fetch(url, { signal: controller.signal })
+      if (!response.ok) throw new Error(`Tile fetch failed: ${response.status}`)
 
-    cache.put(url, response.clone())
-    const buffer = await response.arrayBuffer()
+      const buffer = await response.arrayBuffer()
 
-    return {
-      data: buffer,
-      cacheControl: response.headers.get("Cache-Control"),
-      expires: response.headers.get("Expires"),
+      return {
+        data: buffer,
+        cacheControl: response.headers.get("Cache-Control"),
+        expires: response.headers.get("Expires"),
+      }
     }
   })
 
@@ -110,6 +125,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
   const [showNearbyHunters, setShowNearbyHunters] = useState(true)
   const [selectedWaypoint, setSelectedWaypoint] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null)
+  const hasAutoCenteredRef = useRef(false)
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<MaplibreMap | null>(null)
@@ -215,14 +231,15 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
         if (cancelled) return
         setUserLocation(coords)
 
-        if (mapRef.current) {
+        if (!hasAutoCenteredRef.current && mapRef.current) {
           mapRef.current.easeTo({ center: [coords.longitude, coords.latitude], duration: 750 })
+          hasAutoCenteredRef.current = true
         }
       },
       (error) => {
         console.error("Error watching position:", error)
       },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 }, // Extended timeout for constrained/satellite links
     )
       .then((id) => {
         if (!cancelled) {
@@ -271,13 +288,17 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
   }, [refreshMemberMarkers])
 
   useEffect(() => {
+    // Sync events may indicate fresh data without changing array identity; refresh to keep markers aligned.
     refreshWaypointMarkers()
     refreshMemberMarkers()
   }, [refreshMemberMarkers, refreshWaypointMarkers, syncStatus, network.lastUpdated, lastSyncedAt])
 
   const centerOnUser = useCallback(() => {
+    hasAutoCenteredRef.current = false
+
     if (userLocation && mapRef.current) {
       mapRef.current.easeTo({ center: [userLocation.longitude, userLocation.latitude], duration: 500, zoom: 12 })
+      hasAutoCenteredRef.current = true
     }
   }, [userLocation])
 
