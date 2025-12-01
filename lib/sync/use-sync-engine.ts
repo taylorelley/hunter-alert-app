@@ -74,7 +74,7 @@ export function useSyncEngine({
       )
       if (sendable.length > 0) {
         const invalidActionIds: string[] = []
-        const validSendable = sendable.filter((action) => {
+        const validSendable = sendable.filter((action): action is PendingAction & { payload: MessageDraft } => {
           if (!isMessageDraft(action.payload)) {
             console.warn(`Invalid payload for action ${action.id}, skipping`)
             invalidActionIds.push(action.id)
@@ -88,7 +88,7 @@ export function useSyncEngine({
         }
 
         const drafts: MessageDraft[] = validSendable.map((action) => ({
-          ...(action.payload as MessageDraft),
+          ...action.payload,
           client_id: action.id,
         }))
 
