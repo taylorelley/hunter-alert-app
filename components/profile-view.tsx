@@ -24,6 +24,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { useApp } from "./app-provider"
 import { useNetwork } from "./network-provider"
+import { AdminDebugPanel } from "./admin-debug-panel"
 
 export function ProfileView() {
   const { userName, isPremium, emergencyContacts, signIn, signOut, session } = useApp()
@@ -290,6 +291,9 @@ export function ProfileView() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Admin Debug */}
+        <AdminDebugPanel />
 
         {/* Sign Out */}
         <Button

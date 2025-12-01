@@ -7,6 +7,7 @@ import { MessageDraft, PullUpdatesResult } from "../supabase/types"
 import { persistPendingActions, readPendingActions } from "./pending-actions"
 import { PendingAction, SyncStatus } from "./types"
 import { NetworkState } from "@/components/network-provider"
+import { appConfig } from "@/lib/config/env"
 
 interface SyncEngineOptions {
   client: SupabaseClient | null
@@ -18,7 +19,7 @@ interface SyncEngineOptions {
   onSendApplied?: (actions: PendingAction[], records: any[]) => void
 }
 
-const BASE_BACKOFF_MS = 5000
+const SYNC_LIMITS = appConfig.constraints
 
 export function useSyncEngine({
   client,
@@ -68,8 +69,12 @@ export function useSyncEngine({
           client_id: action.id,
         }))
 
-        const maxBatch = network.ultraConstrained ? 3 : network.constrained ? 5 : undefined
-        const response = await sendBatch(client, drafts, maxBatch)
+        const constrainedBatch = network.ultraConstrained
+          ? SYNC_LIMITS.syncUltraBatchLimit.value
+          : network.constrained
+            ? SYNC_LIMITS.syncSatelliteBatchLimit.value
+            : SYNC_LIMITS.syncNormalBatchLimit.value
+        const response = await sendBatch(client, drafts, constrainedBatch)
         if (onSendApplied) {
           onSendApplied(sendable, response.data ?? [])
         }
@@ -86,7 +91,12 @@ export function useSyncEngine({
     } catch (error) {
       console.error("Sync failed", error)
       setStatus("backoff")
-      const delay = network.ultraConstrained ? BASE_BACKOFF_MS * 4 : network.constrained ? BASE_BACKOFF_MS * 2 : BASE_BACKOFF_MS
+      const baseDelay = SYNC_LIMITS.syncBaseBackoffMs.value
+      const delay = network.ultraConstrained
+        ? baseDelay * 4
+        : network.constrained
+          ? baseDelay * 2
+          : baseDelay
       backoffRef.current = setTimeout(() => {
         syncingRef.current = false
         flush()

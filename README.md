@@ -19,6 +19,18 @@ Hunter Alert is a mobile-first application built with React, Next.js, and Capaci
 - `pnpm test` to execute Vitest unit tests (including the Supabase wrapper and offline queue/sync state machine).
 - `pnpm test:coverage` for a coverage report.
 
+### Constrained network configuration
+
+- The `scripts/validate-env.mjs` validator runs automatically before `dev`, `build`, and `start` to ensure constrained-network environment variables are present and within safe ranges. Missing values are defaulted and clamped to sane bounds for satellite use.
+- Required connectivity variables: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+- Defaults for constrained-friendly tuning (override via env):
+  - `BACKEND_MAX_MESSAGE_BATCH` (default 20, range 1-50)
+  - `BACKEND_MAX_PULL_LIMIT` (default 100, range 10-500)
+  - `SYNC_NORMAL_BATCH_LIMIT` (default 10, range 1-50)
+  - `SYNC_SATELLITE_BATCH_LIMIT` (default 5, range 1-25)
+  - `SYNC_ULTRA_BATCH_LIMIT` (default 3, range 1-10)
+  - `SYNC_BASE_BACKOFF_MS` (default 5000, range 1000-60000)
+
 ## Mobile App (Capacitor)
 
 ### Prerequisites
