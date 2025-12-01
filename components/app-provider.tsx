@@ -48,9 +48,9 @@ export interface MemberLocation {
   id: string
   name: string
   coordinates: { lat: number; lng: number }
-  accuracy?: number
-  heading?: number | null
-  updatedAt?: string
+  accuracy: number | undefined
+  heading: number | null
+  updatedAt: string
 }
 
 export interface Geofence {
