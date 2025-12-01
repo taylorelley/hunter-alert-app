@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Trip, useApp } from "../app-provider"
 import { cn } from "@/lib/utils"
 
+const MIN_FREE_CADENCE_HOURS = 6
+
 interface PlanTripModalProps {
   isOpen: boolean
   onClose: () => void
@@ -21,7 +23,7 @@ const formatDateLocalYYYYMMDD = (date: Date) => {
 }
 
 export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
-  const { startTrip, updateTrip, emergencyContacts, refresh } = useApp()
+  const { startTrip, updateTrip, emergencyContacts, refresh, isPremium } = useApp()
   const [step, setStep] = useState(1)
   const [destination, setDestination] = useState("")
   const [startDate, setStartDate] = useState("")
@@ -246,21 +248,27 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
                   </p>
 
                   <div className="grid grid-cols-2 gap-3">
-                    {[2, 4, 6, 8, 12, 24].map((hours) => (
-                      <button
-                        key={hours}
-                        onClick={() => setCheckInCadence(hours)}
-                        className={cn(
-                          "p-4 rounded-lg border-2 transition-all text-center",
-                          checkInCadence === hours
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/50",
-                        )}
-                      >
-                        <span className="text-2xl font-bold">{hours}</span>
-                        <span className="text-sm text-muted-foreground block">hours</span>
-                      </button>
-                    ))}
+                    {[2, 4, 6, 8, 12, 24].map((hours) => {
+                      const locked = !isPremium && hours < MIN_FREE_CADENCE_HOURS
+                      return (
+                        <button
+                          key={hours}
+                          onClick={() => !locked && setCheckInCadence(hours)}
+                          disabled={locked}
+                          className={cn(
+                            "p-4 rounded-lg border-2 transition-all text-center",
+                            checkInCadence === hours
+                              ? "border-primary bg-primary/10"
+                              : "border-border hover:border-primary/50",
+                            locked && "opacity-60 cursor-not-allowed",
+                          )}
+                        >
+                          <span className="text-2xl font-bold">{hours}</span>
+                          <span className="text-sm text-muted-foreground block">hours</span>
+                          {locked && <span className="mt-2 inline-block text-xs text-accent font-semibold">Pro</span>}
+                        </button>
+                      )
+                    })}
                   </div>
 
                   <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
@@ -271,6 +279,13 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
                       </p>
                     </div>
                   </div>
+
+                  {!isPremium && (
+                    <p className="text-xs text-muted-foreground">
+                      Faster than every {MIN_FREE_CADENCE_HOURS} hours is part of Pro. Upgrade in billing settings to
+                      enable tighter check-in cadences.
+                    </p>
+                  )}
                 </div>
               )}
 

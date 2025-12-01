@@ -14,6 +14,8 @@ import { CheckInModal } from "@/components/modals/check-in-modal"
 import { SOSModal } from "@/components/modals/sos-modal"
 import { AddWaypointModal } from "@/components/modals/add-waypoint-modal"
 import { PlanTripModal } from "@/components/modals/plan-trip-modal"
+import { AuthView } from "@/components/auth-view"
+import { useApp } from "@/components/app-provider"
 
 function HunterAlertApp() {
   const [activeTab, setActiveTab] = useState("home")
@@ -74,11 +76,21 @@ function HunterAlertApp() {
   )
 }
 
+function AppContent() {
+  const { session } = useApp()
+
+  if (!session) {
+    return <AuthView />
+  }
+
+  return <HunterAlertApp />
+}
+
 export default function Page() {
   return (
     <NetworkProvider>
       <AppProvider>
-        <HunterAlertApp />
+        <AppContent />
       </AppProvider>
     </NetworkProvider>
   )

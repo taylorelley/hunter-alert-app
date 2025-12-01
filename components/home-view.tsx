@@ -12,8 +12,6 @@ import {
   CloudRain,
   Wind,
   ChevronRight,
-  Star,
-  Zap,
   Cloud,
   CloudDrizzle,
   CloudSnow,
@@ -23,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useApp } from "./app-provider"
+import { BillingSettings } from "./billing-settings"
 import { cn } from "@/lib/utils"
 import { getCurrentPosition } from "@/lib/geolocation"
 import { getWeatherByCoordinates, type WeatherData, formatCondition } from "@/lib/weather"
@@ -319,34 +318,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
           </div>
         </div>
 
-        {/* Premium Upsell */}
-        {!isPremium && (
-          <Card className="border-accent/30 bg-accent/5">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-accent/20">
-                  <Zap className="w-5 h-5 text-accent" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    Upgrade to Pro
-                    <Star className="w-4 h-4 text-accent" />
-                  </h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Get high-frequency check-ins, advanced waypoints, and extended history.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3 border-accent text-accent hover:bg-accent hover:text-accent-foreground bg-transparent"
-                  >
-                    Learn More
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {!isPremium && <BillingSettings title="Upgrade to Pro" compact />}
       </div>
     </div>
   )

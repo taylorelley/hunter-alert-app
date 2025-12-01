@@ -15,7 +15,6 @@ import {
   MapPin,
   Users,
   Radio,
-  Zap,
   Star,
   Settings,
 } from "lucide-react"
@@ -25,9 +24,17 @@ import { Switch } from "@/components/ui/switch"
 import { useApp } from "./app-provider"
 import { useNetwork } from "./network-provider"
 import { AdminDebugPanel } from "./admin-debug-panel"
+import { BillingSettings } from "./billing-settings"
 
 export function ProfileView() {
-  const { userName, isPremium, emergencyContacts, signIn, signOut, session } = useApp()
+  const {
+    userName,
+    isPremium,
+    emergencyContacts,
+    signIn,
+    signOut,
+    session,
+  } = useApp()
   const { state: network } = useNetwork()
   const [locationSharing, setLocationSharing] = useState(true)
   const [tripVisibility, setTripVisibility] = useState(true)
@@ -118,28 +125,7 @@ export function ProfileView() {
           </Card>
         )}
 
-        {/* Premium Upgrade */}
-        {!isPremium && (
-          <Card className="border-accent/30 bg-gradient-to-br from-accent/10 to-transparent">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-accent/20">
-                  <Zap className="w-6 h-6 text-accent" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold">Upgrade to Pro</h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    High-frequency check-ins, advanced waypoints, extended history, and priority support.
-                  </p>
-                  <div className="flex items-center gap-4 mt-3">
-                    <Button className="bg-accent text-accent-foreground hover:bg-accent/90">$4.99/month</Button>
-                    <span className="text-xs text-muted-foreground">or $39.99/year</span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <BillingSettings title="Billing & Purchases" />
 
         {/* Emergency Contacts */}
         <div className="space-y-3">
