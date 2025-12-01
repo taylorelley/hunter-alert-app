@@ -126,6 +126,7 @@ describe('supabase api wrapper', () => {
     const waypoints = [{ id: 1 }];
     const geofences = [{ id: 1 }];
     const profiles = [{ id: 1 }];
+    const device_sessions = [{ id: 1 }, { id: 2 }];
     (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         conversations,
@@ -137,6 +138,7 @@ describe('supabase api wrapper', () => {
         waypoints,
         geofences,
         profiles,
+        device_sessions,
       },
       error: null,
     });
@@ -152,6 +154,7 @@ describe('supabase api wrapper', () => {
       waypoints,
       geofences,
       profiles,
+      device_sessions: device_sessions.slice(0, 2),
     });
   });
 

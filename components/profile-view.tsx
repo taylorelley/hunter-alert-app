@@ -12,6 +12,9 @@ import {
   HelpCircle,
   FileText,
   Smartphone,
+  RefreshCw,
+  Loader2,
+  ShieldX,
   MapPin,
   Users,
   Radio,
@@ -27,7 +30,19 @@ import { useNetwork } from "./network-provider"
 import { AdminDebugPanel } from "./admin-debug-panel"
 
 export function ProfileView() {
-  const { userName, isPremium, emergencyContacts, signIn, signOut, session } = useApp()
+  const {
+    userName,
+    isPremium,
+    emergencyContacts,
+    deviceSessions,
+    currentDevice,
+    deviceSessionId,
+    signIn,
+    signOut,
+    session,
+    refreshDeviceSessions,
+    revokeDeviceSession,
+  } = useApp()
   const { state: network } = useNetwork()
   const [locationSharing, setLocationSharing] = useState(true)
   const [tripVisibility, setTripVisibility] = useState(true)
@@ -37,6 +52,9 @@ export function ProfileView() {
   const [password, setPassword] = useState("")
   const [authError, setAuthError] = useState<string | null>(null)
   const [authLoading, setAuthLoading] = useState(false)
+  const [refreshingDevices, setRefreshingDevices] = useState(false)
+  const [revokingId, setRevokingId] = useState<string | null>(null)
+  const [deviceError, setDeviceError] = useState<string | null>(null)
   const showAdminDebug = process.env.NEXT_PUBLIC_ENABLE_ADMIN_DEBUG === "true"
 
   const handleSignIn = async () => {
@@ -53,6 +71,35 @@ export function ProfileView() {
       setAuthLoading(false)
     }
   }
+
+  const handleRefreshDevices = async () => {
+    setDeviceError(null)
+    if (!session) return
+    setRefreshingDevices(true)
+    try {
+      await refreshDeviceSessions()
+    } catch (error) {
+      console.error(error)
+      setDeviceError("Unable to refresh devices. Check your connection.")
+    } finally {
+      setRefreshingDevices(false)
+    }
+  }
+
+  const handleRevokeDevice = async (id: string) => {
+    setDeviceError(null)
+    setRevokingId(id)
+    try {
+      await revokeDeviceSession(id)
+    } catch (error) {
+      console.error(error)
+      setDeviceError("Unable to revoke the selected session. Try again when online.")
+    } finally {
+      setRevokingId(null)
+    }
+  }
+
+  const otherSessions = deviceSessions.filter((session) => !session.isCurrent)
 
   return (
     <div className="flex-1 overflow-y-auto pb-24">
@@ -253,20 +300,98 @@ export function ProfileView() {
 
         {/* Device & Sessions */}
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Devices</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Devices</h2>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={handleRefreshDevices}
+                disabled={!session || refreshingDevices}
+              >
+                <RefreshCw className={`w-4 h-4 mr-1 ${refreshingDevices ? "animate-spin" : ""}`} />
+                {refreshingDevices ? "Refreshing" : "Refresh"}
+              </Button>
+            </div>
+          </div>
+          {deviceError && <p className="text-sm text-danger">{deviceError}</p>}
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Smartphone className="w-5 h-5 text-primary" />
                   <div>
                     <p className="font-medium">This Device</p>
-                    <p className="text-xs text-muted-foreground">iPhone 15 Pro • Last active now</p>
+                    <p className="text-xs text-muted-foreground">
+                      {currentDevice?.label || "Unknown device"}
+                      {currentDevice?.platform ? ` • ${currentDevice.platform}` : ""}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Last active {currentDevice?.lastSeen ? currentDevice.lastSeen.toLocaleString() : "n/a"}
+                    </p>
                   </div>
                 </div>
-                <span className="px-2 py-1 rounded-full bg-safe/20 text-safe text-xs font-medium">Active</span>
+                <span
+                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    currentDevice?.revokedAt
+                      ? "bg-danger/20 text-danger"
+                      : network.connectivity === "offline"
+                        ? "bg-muted text-muted-foreground"
+                        : "bg-safe/20 text-safe"
+                  }`}
+                >
+                  {currentDevice?.revokedAt ? "Revoked" : "Active"}
+                </span>
               </div>
+              {deviceSessionId && (
+                <p className="text-[11px] text-muted-foreground">Device ID: {deviceSessionId}</p>
+              )}
             </CardContent>
+            {otherSessions.length > 0 && (
+              <div className="border-t border-border divide-y divide-border">
+                {otherSessions.map((device) => (
+                  <div key={device.id} className="flex items-center justify-between p-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="w-4 h-4 text-muted-foreground" />
+                        <p className="font-medium">{device.label}</p>
+                        {device.revokedAt && (
+                          <span className="px-2 py-0.5 rounded-full bg-danger/10 text-danger text-[11px]">Revoked</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {device.platform} • Last seen {device.lastSeen.toLocaleString()}
+                      </p>
+                      {device.appVersion && (
+                        <p className="text-xs text-muted-foreground">App {device.appVersion}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-danger"
+                        onClick={() => handleRevokeDevice(device.id)}
+                        disabled={!!device.revokedAt || revokingId === device.id || !session}
+                      >
+                        {revokingId === device.id ? (
+                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        ) : (
+                          <ShieldX className="w-4 h-4 mr-1" />
+                        )}
+                        Revoke
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {otherSessions.length === 0 && (
+              <p className="text-xs text-muted-foreground px-4 pb-4">
+                Recent sessions will appear here. Cached results remain visible when offline.
+              </p>
+            )}
           </Card>
         </div>
 
