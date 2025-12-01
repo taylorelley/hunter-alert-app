@@ -17,7 +17,7 @@ const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const supabaseDir = path.join(repoRoot, 'backend', 'supabase');
 const cliBinary = process.env.SUPABASE_BIN || path.join(repoRoot, 'node_modules', '.bin', 'supabase');
 
-async function runSupabase(args: string[], quiet = false) {
+async function runSupabase(args: string[], quiet = false): Promise<string> {
   const { stdout, stderr } = await execAsync(cliBinary, args, {
     cwd: supabaseDir,
     env: {
@@ -52,28 +52,43 @@ function readLocalEnv() {
     }, {});
 }
 
-function parseStatusPayload(payload: any, envVars: Record<string, string>): SupabaseStack {
+function parseStatusPayload(payload: unknown, envVars: Record<string, string>): SupabaseStack {
+  const getNested = (value: unknown, path: string[]): unknown => {
+    let current: unknown = value;
+    for (const key of path) {
+      if (typeof current !== 'object' || current === null) return undefined;
+      current = (current as Record<string, unknown>)[key];
+    }
+    return current;
+  };
+
+  const asString = (value: unknown): string | undefined =>
+    typeof value === 'string' ? value : undefined;
+
   const apiUrl =
-    payload?.services?.api?.url ||
-    payload?.api?.url ||
+    asString(getNested(payload, ['services', 'api', 'url'])) ||
+    asString(getNested(payload, ['api', 'url'])) ||
     envVars.SUPABASE_URL ||
     'http://127.0.0.1:54321';
 
   const anonKey =
-    payload?.services?.api?.anonKey ||
-    payload?.api?.anonKey ||
+    asString(getNested(payload, ['services', 'api', 'anonKey'])) ||
+    asString(getNested(payload, ['api', 'anonKey'])) ||
     envVars.SUPABASE_ANON_KEY ||
     envVars.ANON_KEY ||
     '';
 
   const serviceRoleKey =
-    payload?.services?.api?.serviceRoleKey ||
-    payload?.api?.serviceRoleKey ||
+    asString(getNested(payload, ['services', 'api', 'serviceRoleKey'])) ||
+    asString(getNested(payload, ['api', 'serviceRoleKey'])) ||
     envVars.SUPABASE_SERVICE_ROLE_KEY ||
     envVars.SERVICE_ROLE_KEY ||
     '';
 
-  const dbUrl = payload?.db?.url || envVars.SUPABASE_DB_URL;
+  const dbUrl =
+    asString(getNested(payload, ['db', 'url'])) ||
+    envVars.SUPABASE_DB_URL ||
+    undefined;
 
   return { apiUrl, anonKey, serviceRoleKey, dbUrl };
 }
@@ -104,7 +119,7 @@ export async function stopSupabaseStack() {
   await runSupabase(['stop']).catch(() => undefined);
 }
 
-export async function createAdminClient(stack: SupabaseStack): Promise<SupabaseClient> {
+export function createAdminClient(stack: SupabaseStack): SupabaseClient {
   return createClient(stack.apiUrl, stack.serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
@@ -113,7 +128,11 @@ export async function createAdminClient(stack: SupabaseStack): Promise<SupabaseC
   });
 }
 
-export async function createUserClient(stack: SupabaseStack, email: string, password: string) {
+export async function createUserClient(
+  stack: SupabaseStack,
+  email: string,
+  password: string,
+): Promise<{ client: SupabaseClient; userId: string }> {
   const adminClient = await createAdminClient(stack);
   const userResult = await adminClient.auth.admin.createUser({
     email,
@@ -140,7 +159,10 @@ export async function createUserClient(stack: SupabaseStack, email: string, pass
   return { client: authClient, userId: userResult.data.user.id };
 }
 
-export function createThrottledFetch(options: { latencyMs?: number; maxPayloadBytes?: number }) {
+export function createThrottledFetch(options: {
+  latencyMs?: number;
+  maxPayloadBytes?: number;
+}): (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> {
   const latency = options.latencyMs ?? 0;
   const budget = options.maxPayloadBytes ?? Number.POSITIVE_INFINITY;
 
@@ -149,6 +171,7 @@ export function createThrottledFetch(options: { latencyMs?: number; maxPayloadBy
       await new Promise((resolve) => setTimeout(resolve, latency));
     }
 
+    // Note: Only validates string bodies. FormData/Blob/ArrayBuffer not checked.
     const body = typeof init?.body === 'string' ? init.body : '';
     if (Buffer.byteLength(body) > budget) {
       throw new Error('Bandwidth cap exceeded for simulated constrained link');

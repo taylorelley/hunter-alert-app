@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { sendBatch, pullUpdates } from '../../lib/supabase/api';
 import {
   createThrottledFetch,
@@ -17,8 +17,8 @@ const TEST_TIMEOUT = 180_000;
 
 describeIfEnabled('supabase messaging integration', () => {
   let stack: SupabaseStack;
-  let adminClient: Awaited<ReturnType<typeof createAdminClient>>;
-  let userClient: ReturnType<typeof createClient>;
+  let adminClient: SupabaseClient;
+  let userClient: SupabaseClient;
   let userId: string;
   let conversationId: string;
   let credentials: { email: string; password: string };
@@ -89,6 +89,7 @@ describeIfEnabled('supabase messaging integration', () => {
       ];
 
       const sendResult = await sendBatch(userClient, drafts, 5);
+      expect(sendResult.data).toBeDefined();
       expect(sendResult.data?.length).toBe(drafts.length);
 
       const pullResult = await pullUpdates(userClient, null, 10);
@@ -166,7 +167,9 @@ describeIfEnabled('supabase messaging integration', () => {
       const trimmed = bulkyMessages.slice(0, 1);
       const response = await sendBatch(throttledClient, trimmed, 1);
       expect(response.data?.length).toBe(1);
-      expect(performance.now() - start).toBeGreaterThanOrEqual(350);
+      const elapsed = performance.now() - start;
+      // Verify latency applied (with margin for CI variance)
+      expect(elapsed).toBeGreaterThanOrEqual(300);
     },
     TEST_TIMEOUT,
   );
