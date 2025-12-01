@@ -9,6 +9,7 @@ import {
   Waypoint,
   Geofence,
   GroupInvitation,
+  DeviceSession,
 } from './types';
 
 const DEFAULT_BATCH_LIMIT = appConfig.constraints.backendMaxMessageBatch.value;
@@ -184,6 +185,7 @@ export async function pullUpdates(
     waypoints: [],
     geofences: [],
     profiles: [],
+    device_sessions: [],
   };
 
   if (data && typeof data === 'object') {
@@ -204,6 +206,9 @@ export async function pullUpdates(
     result.waypoints = Array.isArray(data.waypoints) ? data.waypoints.slice(0, maxRows) : [];
     result.geofences = Array.isArray(data.geofences) ? data.geofences.slice(0, maxRows) : [];
     result.profiles = Array.isArray(data.profiles) ? data.profiles.slice(0, maxRows) : [];
+    result.device_sessions = Array.isArray(data.device_sessions)
+      ? data.device_sessions.slice(0, maxRows)
+      : [];
   }
 
   return result;
@@ -240,6 +245,65 @@ export async function joinGroup(client: SupabaseClient, groupId: string): Promis
   }
 
   return data as Group;
+}
+
+export async function recordDeviceSession(
+  client: SupabaseClient,
+  payload: {
+    client_session_id: string;
+    device_model: string;
+    platform: string;
+    os_version: string;
+    app_version?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<DeviceSession> {
+  const { data, error } = await client.rpc('record_device_session', {
+    client_session: payload.client_session_id,
+    device_model: payload.device_model,
+    platform: payload.platform,
+    os_version: payload.os_version,
+    app_version: payload.app_version ?? null,
+    metadata: payload.metadata ?? {},
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as DeviceSession;
+}
+
+export async function revokeDeviceSession(client: SupabaseClient, id: string): Promise<DeviceSession> {
+  const { data, error } = await client.rpc('revoke_device_session', { target_id: id });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as DeviceSession;
+}
+
+export async function listDeviceSessions(client: SupabaseClient): Promise<DeviceSession[]> {
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError) {
+    throw sessionError;
+  }
+
+  if (!sessionData?.session) {
+    throw new Error('Cannot list device sessions without an active session');
+  }
+
+  const { data, error } = await client
+    .from('device_sessions')
+    .select('*')
+    .order('last_seen', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as DeviceSession[];
 }
 
 export async function leaveGroup(client: SupabaseClient, groupId: string): Promise<boolean> {
