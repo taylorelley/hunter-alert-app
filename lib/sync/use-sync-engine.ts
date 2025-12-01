@@ -9,8 +9,10 @@ import { PendingAction, SyncStatus } from "./types"
 import { NetworkState } from "@/components/network-provider"
 import { appConfig } from "@/lib/config/env"
 
-function isMessageDraft(payload: Record<string, unknown>): payload is MessageDraft {
-  return typeof payload.conversation_id === "string" && typeof payload.body === "string"
+function isMessageDraft(payload: unknown): payload is MessageDraft {
+  if (typeof payload !== "object" || payload === null) return false
+  const record = payload as Record<string, unknown>
+  return typeof record.conversation_id === "string" && typeof record.body === "string"
 }
 
 interface SyncEngineOptions {
@@ -69,12 +71,13 @@ export function useSyncEngine({
     try {
       const sendable = pending.filter((action) => action.type === "SEND_MESSAGE")
       if (sendable.length > 0) {
-        const drafts: MessageDraft[] = sendable.map((action) => ({
-          ...(isMessageDraft(action.payload as Record<string, unknown>)
-            ? action.payload
-            : { conversation_id: "", body: "" }),
-          client_id: action.id,
-        }))
+        const drafts: MessageDraft[] = sendable.map((action) => {
+          if (isMessageDraft(action.payload)) {
+            return { ...action.payload, client_id: action.id }
+          }
+
+          return { conversation_id: "", body: "", client_id: action.id }
+        })
 
         const constrainedBatch = Math.min(
           SYNC_LIMITS.backendMaxMessageBatch.value,
