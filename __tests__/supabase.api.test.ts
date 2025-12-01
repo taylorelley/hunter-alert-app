@@ -159,6 +159,18 @@ describe('supabase api wrapper', () => {
     expect(result).toEqual([{ id: 'ds-1' }]);
   });
 
+  it('throws when the auth session check fails before listing device sessions', async () => {
+    const client = mockClient();
+    const sessionError = new Error('session lookup failed');
+    (client.auth.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { session: null },
+      error: sessionError,
+    });
+
+    await expect(listDeviceSessions(client)).rejects.toThrow(sessionError);
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
   it('throws when listing device sessions without auth session', async () => {
     const client = mockClient();
     (client.auth.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: null }, error: null });

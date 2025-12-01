@@ -285,7 +285,11 @@ export async function revokeDeviceSession(client: SupabaseClient, id: string): P
 }
 
 export async function listDeviceSessions(client: SupabaseClient): Promise<DeviceSession[]> {
-  const { data: sessionData } = await client.auth.getSession();
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError) {
+    throw sessionError;
+  }
+
   if (!sessionData?.session) {
     throw new Error('Cannot list device sessions without an active session');
   }

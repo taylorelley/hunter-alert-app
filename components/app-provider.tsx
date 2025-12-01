@@ -462,7 +462,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const records = await listDeviceSessions(supabase)
       setBackendDeviceSessions((prev) => mergeRecords(prev, records))
     } catch (error) {
-      console.warn("Unable to refresh device sessions:", error instanceof Error ? error.message : error)
+      console.warn("Unable to refresh device sessions:", error)
     }
   }, [session, supabase])
 
