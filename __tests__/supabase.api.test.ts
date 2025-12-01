@@ -94,6 +94,24 @@ describe('supabase api wrapper', () => {
     ]);
   });
 
+  it('drops messages exceeding MAX_MESSAGE_BYTES', async () => {
+    const client = mockClient();
+    (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: ['ok'], error: null });
+
+    const largeBody = 'x'.repeat(5000);
+    const drafts: MessageDraft[] = [
+      { conversation_id: 'c1', body: 'small message' },
+      { conversation_id: 'c1', body: largeBody },
+    ];
+
+    const result = await sendBatch(client, drafts, 5);
+
+    expect(result.data).toEqual(['ok']);
+    expect(result.dropped).toEqual([
+      expect.objectContaining({ draft: drafts[1], reason: 'oversize' }),
+    ]);
+  });
+
   it('slices pull_updates responses to maxRows and handles missing collections', async () => {
     const client = mockClient();
     const conversations = [{ id: 1 }, { id: 2 }];

@@ -25,6 +25,17 @@ interface SanitizedMessageRejection {
   bytes?: number;
 }
 
+interface SanitizeMessagesResult {
+  accepted: MessageDraft[];
+  rejected: SanitizedMessageRejection[];
+}
+
+interface SendBatchResult {
+  data: unknown[];
+  error: null;
+  dropped: SanitizedMessageRejection[];
+}
+
 const textEncoder = new TextEncoder();
 
 function getMessageSizeBytes(message: MessageDraft): number | null {
@@ -50,10 +61,7 @@ function clampBatch(messages: MessageDraft[], limit: number): MessageDraft[] {
   return messages.slice(0, Math.max(limit, 1));
 }
 
-function sanitizeMessages(messages: MessageDraft[]): {
-  accepted: MessageDraft[];
-  rejected: SanitizedMessageRejection[];
-} {
+function sanitizeMessages(messages: MessageDraft[]): SanitizeMessagesResult {
   const accepted: MessageDraft[] = [];
   const rejected: SanitizedMessageRejection[] = [];
 
@@ -106,13 +114,14 @@ export async function sendBatch(
   client: SupabaseClient,
   drafts: MessageDraft[],
   maxBatchSize = DEFAULT_BATCH_LIMIT,
-) {
+): Promise<SendBatchResult> {
   const { accepted, rejected } = sanitizeMessages(drafts);
 
   if (accepted.length > maxBatchSize) {
     throw new Error(`Batch too large; maximum allowed is ${maxBatchSize} messages.`);
   }
 
+  // Clamp defensively to protect against future call sites that skip length checks.
   const payload = clampBatch(accepted, maxBatchSize);
   if (payload.length === 0) {
     return { data: [], error: null, dropped: rejected };
