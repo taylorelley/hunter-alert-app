@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { AppProvider } from "@/components/app-provider"
+import { AppProvider, type Trip } from "@/components/app-provider"
 import { NetworkProvider } from "@/components/network-provider"
 import { MobileNav } from "@/components/mobile-nav"
 import { StatusHeader } from "@/components/status-header"
@@ -21,6 +21,7 @@ function HunterAlertApp() {
   const [showSOS, setShowSOS] = useState(false)
   const [showAddWaypoint, setShowAddWaypoint] = useState(false)
   const [showPlanTrip, setShowPlanTrip] = useState(false)
+  const [tripToEdit, setTripToEdit] = useState<Trip | null>(null)
 
   return (
     <div className="flex flex-col h-[100dvh] bg-background">
@@ -32,11 +33,25 @@ function HunterAlertApp() {
             onNavigate={setActiveTab}
             onCheckIn={() => setShowCheckIn(true)}
             onAddWaypoint={() => setShowAddWaypoint(true)}
-            onStartTrip={() => setShowPlanTrip(true)}
+            onStartTrip={() => {
+              setTripToEdit(null)
+              setShowPlanTrip(true)
+            }}
           />
         )}
         {activeTab === "map" && <MapView onAddWaypoint={() => setShowAddWaypoint(true)} />}
-        {activeTab === "trips" && <TripsView onStartTrip={() => setShowPlanTrip(true)} />}
+        {activeTab === "trips" && (
+          <TripsView
+            onStartTrip={() => {
+              setTripToEdit(null)
+              setShowPlanTrip(true)
+            }}
+            onEditTrip={(trip) => {
+              setTripToEdit(trip)
+              setShowPlanTrip(true)
+            }}
+          />
+        )}
         {activeTab === "groups" && <GroupsView />}
         {activeTab === "profile" && <ProfileView />}
       </main>
@@ -47,7 +62,14 @@ function HunterAlertApp() {
       <CheckInModal isOpen={showCheckIn} onClose={() => setShowCheckIn(false)} />
       <SOSModal isOpen={showSOS} onClose={() => setShowSOS(false)} />
       <AddWaypointModal isOpen={showAddWaypoint} onClose={() => setShowAddWaypoint(false)} />
-      <PlanTripModal isOpen={showPlanTrip} onClose={() => setShowPlanTrip(false)} />
+      <PlanTripModal
+        isOpen={showPlanTrip}
+        trip={tripToEdit}
+        onClose={() => {
+          setShowPlanTrip(false)
+          setTripToEdit(null)
+        }}
+      />
     </div>
   )
 }
