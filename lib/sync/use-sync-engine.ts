@@ -84,28 +84,30 @@ export function useSyncEngine({
         })
 
         if (invalidActionIds.length > 0) {
-          setPending((current) => current.filter((action) => !invalidActionIds.includes(action.id)))
+          const invalidSet = new Set(invalidActionIds)
+          setPending((current) => current.filter((action) => !invalidSet.has(action.id)))
         }
 
-        const drafts: MessageDraft[] = validSendable.map((action) => ({
+        const constrainedBatch = Math.min(
+          SYNC_LIMITS.backendMaxMessageBatch.value,
+          network.ultraConstrained
+            ? SYNC_LIMITS.syncUltraBatchLimit.value
+            : network.constrained
+              ? SYNC_LIMITS.syncSatelliteBatchLimit.value
+              : SYNC_LIMITS.syncNormalBatchLimit.value,
+        )
+        const toSend = validSendable.slice(0, constrainedBatch)
+        const drafts: MessageDraft[] = toSend.map((action) => ({
           ...action.payload,
           client_id: action.id,
         }))
 
         if (drafts.length > 0) {
-          const constrainedBatch = Math.min(
-            SYNC_LIMITS.backendMaxMessageBatch.value,
-            network.ultraConstrained
-              ? SYNC_LIMITS.syncUltraBatchLimit.value
-              : network.constrained
-                ? SYNC_LIMITS.syncSatelliteBatchLimit.value
-                : SYNC_LIMITS.syncNormalBatchLimit.value,
-          )
           const response = await sendBatch(client, drafts, constrainedBatch)
           if (onSendApplied) {
-            onSendApplied(validSendable, response.data ?? [])
+            onSendApplied(toSend, response.data ?? [])
           }
-          setPending((current) => current.filter((action) => !validSendable.some((item) => item.id === action.id)))
+          setPending((current) => current.filter((action) => !toSend.some((item) => item.id === action.id)))
         }
       }
 
