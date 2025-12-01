@@ -6,10 +6,13 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
+    "lint:preflight": "node scripts/preflight.js",
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "ci:platform-flags": "node scripts/check-platform-flags.js",
+    "ci:capacitor-bridge": "node scripts/check-capacitor-bridge.js"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.4",
