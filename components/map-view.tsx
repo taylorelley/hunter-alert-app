@@ -134,7 +134,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
 
         return {
           ...member,
-          distanceLabel: distance ? `${(distance / 1609.34).toFixed(1)} mi` : "--",
+          distanceLabel: distance != null ? `${(distance / 1609.34).toFixed(1)} mi` : "--",
         }
       }),
     [memberLocations, userLocation],

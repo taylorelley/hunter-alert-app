@@ -578,7 +578,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }))
 
     const uiMemberLocations = backendProfiles
-      .map((profile) => {
+      .map<MemberLocation | null>((profile) => {
         const metadata = (profile as unknown as { metadata?: Record<string, unknown> }).metadata
         const lastLocation = (metadata?.last_location || metadata?.lastLocation) as Record<string, unknown> | undefined
 
