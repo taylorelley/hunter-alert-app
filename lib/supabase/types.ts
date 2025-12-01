@@ -14,6 +14,31 @@ export interface Group {
   description: string | null;
   owner_id: string;
   member_ids: string[];
+  member_roles: Record<string, 'owner' | 'admin' | 'member'>;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupInvitation {
+  id: string;
+  group_id: string;
+  sender_id: string;
+  recipient_id: string | null;
+  recipient_email: string | null;
+  role: 'member' | 'admin';
+  status: 'pending' | 'accepted' | 'declined';
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupActivity {
+  id: string;
+  group_id: string;
+  actor_id: string;
+  activity_type: 'create' | 'invite' | 'join' | 'leave' | 'geofence' | 'waypoint' | 'role_change' | 'alert';
+  description: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -103,6 +128,8 @@ export interface PullUpdatesResult {
   messages: Record<string, unknown>[];
   sync_cursors: Record<string, unknown>[];
   groups: Group[];
+  group_invitations: GroupInvitation[];
+  group_activity: GroupActivity[];
   waypoints: Waypoint[];
   geofences: Geofence[];
   profiles: Profile[];

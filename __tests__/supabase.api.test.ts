@@ -79,6 +79,8 @@ describe('supabase api wrapper', () => {
     const messages = [{ id: 1 }, { id: 2 }, { id: 3 }];
     const sync_cursors = [{ id: 1 }];
     const groups = [{ id: 1 }];
+    const group_invitations = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    const group_activity = [{ id: 1 }, { id: 2 }, { id: 3 }];
     const waypoints = [{ id: 1 }];
     const geofences = [{ id: 1 }];
     const profiles = [{ id: 1 }];
@@ -88,6 +90,8 @@ describe('supabase api wrapper', () => {
         messages,
         sync_cursors,
         groups,
+        group_invitations,
+        group_activity,
         waypoints,
         geofences,
         profiles,
@@ -101,6 +105,8 @@ describe('supabase api wrapper', () => {
       messages: messages.slice(0, 2),
       sync_cursors,
       groups,
+      group_invitations: group_invitations.slice(0, 2),
+      group_activity: group_activity.slice(0, 2),
       waypoints,
       geofences,
       profiles,
