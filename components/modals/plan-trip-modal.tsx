@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { X, MapPin, Clock, Users, FileText, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -11,6 +11,13 @@ interface PlanTripModalProps {
   isOpen: boolean
   onClose: () => void
   trip?: Trip | null
+}
+
+const formatDateLocalYYYYMMDD = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
 }
 
 export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
@@ -26,14 +33,14 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isEditing = useMemo(() => Boolean(trip?.id), [trip?.id])
+  const isEditing = Boolean(trip?.id)
 
   useEffect(() => {
     if (!isOpen) return
     if (trip) {
       setDestination(trip.destination)
-      setStartDate(trip.startDate.toISOString().slice(0, 10))
-      setEndDate(trip.endDate.toISOString().slice(0, 10))
+      setStartDate(formatDateLocalYYYYMMDD(trip.startDate))
+      setEndDate(formatDateLocalYYYYMMDD(trip.endDate))
       setCheckInCadence(trip.checkInCadence)
       setSelectedContacts(trip.emergencyContacts)
       setNotes(trip.notes)
@@ -99,12 +106,32 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
         setStartDate("")
         setEndDate("")
         setCheckInCadence(4)
+        setSelectedContacts([])
         setNotes("")
         onClose()
       }, 2000)
     } catch (err) {
       console.error(err)
-      setError("Sign in is required before you can manage a trip.")
+      const isAuthError = (error: unknown) => {
+        if (typeof error === "object" && error !== null) {
+          const { status, code } = error as { status?: number; code?: string }
+          if (status === 401 || code === "UNAUTHORIZED") {
+            return true
+          }
+        }
+
+        if (error instanceof Error && /auth|unauthorized/i.test(error.message)) {
+          return true
+        }
+
+        return false
+      }
+
+      if (isAuthError(err)) {
+        setError("Sign in is required before you can manage a trip.")
+      } else {
+        setError("An error occurred while managing the trip. Please try again.")
+      }
     } finally {
       setIsSubmitting(false)
     }

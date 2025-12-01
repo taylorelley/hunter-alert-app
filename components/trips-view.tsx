@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Plus, ChevronRight, Calendar, Clock, MapPin, CheckCircle2, AlertCircle, X, Pencil, RefreshCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,31 +18,22 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let isMounted = true
-    const loadTrips = async () => {
-      setIsRefreshing(true)
-      setError(null)
-      try {
-        await refresh()
-      } catch (err) {
-        console.error("Failed to refresh trips", err)
-        if (isMounted) {
-          setError("Unable to sync trips right now. Pull to refresh again in a moment.")
-        }
-      } finally {
-        if (isMounted) {
-          setIsRefreshing(false)
-        }
-      }
-    }
-
-    void loadTrips()
-
-    return () => {
-      isMounted = false
+  const doRefresh = useCallback(async () => {
+    setIsRefreshing(true)
+    setError(null)
+    try {
+      await refresh()
+    } catch (err) {
+      console.error("Failed to refresh trips", err)
+      setError("Unable to sync trips right now. Pull to refresh again in a moment.")
+    } finally {
+      setIsRefreshing(false)
     }
   }, [refresh])
+
+  useEffect(() => {
+    void doRefresh()
+  }, [doRefresh])
 
   const historyTrips = useMemo(() => {
     return trips
@@ -56,20 +47,10 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
 
   const formatDateRange = (trip: Trip) => `${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}`
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true)
-    setError(null)
-    try {
-      await refresh()
-    } catch (err) {
-      console.error("Failed to refresh trips", err)
-      setError("Unable to sync trips right now. Pull to refresh again in a moment.")
-    } finally {
-      setIsRefreshing(false)
-    }
-  }
+  const handleRefresh = doRefresh
 
-  const hasCheckIns = currentTrip?.checkIns && currentTrip.checkIns.length > 0
+  const displayedCheckIns = currentTrip?.checkIns.slice(0, 3) ?? []
+  const hasCheckIns = displayedCheckIns.length > 0
 
   return (
     <div className="flex-1 overflow-y-auto pb-24">
@@ -170,7 +151,7 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
                     <h4 className="text-sm font-semibold text-muted-foreground">Recent Check-ins</h4>
                     <div className="space-y-3">
                       {hasCheckIns ? (
-                        currentTrip.checkIns.slice(0, 3).map((checkIn, index) => (
+                        displayedCheckIns.map((checkIn, index) => (
                           <div key={checkIn.id} className="flex items-start gap-3">
                             <div className="flex flex-col items-center">
                               <div
@@ -186,7 +167,7 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
                                   )}
                                 />
                               </div>
-                              {index < currentTrip.checkIns.length - 1 && <div className="w-0.5 h-8 bg-border mt-1" />}
+                              {index < displayedCheckIns.length - 1 && <div className="w-0.5 h-8 bg-border mt-1" />}
                             </div>
                             <div className="flex-1 pt-1">
                               <div className="flex items-center justify-between">
@@ -270,6 +251,14 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
                 key={trip.id}
                 className="hover:bg-muted/50 transition-colors cursor-pointer"
                 onClick={() => onEditTrip(trip)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    onEditTrip(trip)
+                  }
+                }}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between">
