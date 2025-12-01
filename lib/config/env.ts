@@ -38,7 +38,15 @@ function resolveNumberSetting(definition: {
   description: string
 }): NumberSetting {
   const raw = process.env[definition.key]
-  const parsed = raw !== undefined ? Number(raw) : Number.NaN
+  if (raw === undefined || raw === null || raw === '') {
+    return {
+      ...definition,
+      value: definition.defaultValue,
+      source: 'default',
+    }
+  }
+
+  const parsed = Number(raw)
 
   if (Number.isNaN(parsed)) {
     return {

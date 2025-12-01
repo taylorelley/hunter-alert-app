@@ -37,7 +37,7 @@ const SETTINGS = [
   },
 ]
 
-export function AdminDebugPanel() {
+export function AdminDebugPanel(): JSX.Element {
   const missing = missingRequiredEnv
   const statusIcon = missing.length === 0 ? (
     <CheckCircle2 className="w-4 h-4 text-safe" aria-hidden />

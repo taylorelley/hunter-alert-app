@@ -37,6 +37,7 @@ export function ProfileView() {
   const [password, setPassword] = useState("")
   const [authError, setAuthError] = useState<string | null>(null)
   const [authLoading, setAuthLoading] = useState(false)
+  const showAdminDebug = process.env.NEXT_PUBLIC_ENABLE_ADMIN_DEBUG === "true"
 
   const handleSignIn = async () => {
     setAuthError(null)
@@ -293,7 +294,7 @@ export function ProfileView() {
         </div>
 
         {/* Admin Debug */}
-        <AdminDebugPanel />
+        {showAdminDebug && <AdminDebugPanel />}
 
         {/* Sign Out */}
         <Button
