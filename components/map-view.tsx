@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import maplibregl, { Map, Marker } from "maplibre-gl"
+import maplibregl, { Map, Marker, type RequestParameters } from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import {
   MapPin,
@@ -45,6 +45,58 @@ const WAYPOINT_COLORS: Record<Waypoint["type"], string> = {
 const MAP_STYLES: Record<"terrain" | "satellite", string> = {
   terrain: "https://demotiles.maplibre.org/style.json",
   satellite: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+}
+
+const TILE_CACHE_PROTOCOL = "cached+https"
+const TILE_CACHE_NAME = "maplibre-tile-cache"
+let tileProtocolRegistered = false
+
+function registerTileCacheProtocol() {
+  if (tileProtocolRegistered || typeof window === "undefined" || !("caches" in window)) return
+
+  maplibregl.addProtocol(TILE_CACHE_PROTOCOL, (params, callback) => {
+    const url = params.url.replace(`${TILE_CACHE_PROTOCOL}://`, "https://")
+    const controller = new AbortController()
+
+    caches
+      .open(TILE_CACHE_NAME)
+      .then(async (cache) => {
+        try {
+          const cached = await cache.match(url)
+          if (cached) {
+            const buffer = await cached.arrayBuffer()
+            callback(null, buffer, cached.headers.get("content-type") || "application/octet-stream")
+            return
+          }
+
+          const response = await fetch(url, { signal: controller.signal })
+          if (!response.ok) throw new Error(`Tile fetch failed: ${response.status}`)
+
+          cache.put(url, response.clone())
+          const buffer = await response.arrayBuffer()
+          callback(null, buffer, response.headers.get("content-type") || "application/octet-stream")
+        } catch (error) {
+          callback(error as Error)
+        }
+      })
+      .catch((error) => callback(error as Error))
+
+    return { cancel: () => controller.abort() }
+  })
+
+  tileProtocolRegistered = true
+}
+
+function cacheableRequest(url: string, resourceType?: string): RequestParameters {
+  if (url.startsWith("http")) {
+    const protocolUrl = url.replace(/^https:\/\//, `${TILE_CACHE_PROTOCOL}://`)
+
+    if (resourceType && ["Tile", "Glyphs", "SpriteImage", "SpriteJSON", "Image", "Style", "Source"].includes(resourceType)) {
+      return { url: protocolUrl, mode: "cors", cache: "force-cache" }
+    }
+  }
+
+  return { url, mode: "cors" }
 }
 
 interface MapViewProps {
@@ -110,6 +162,12 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
     if (!mapRef.current) return
 
     memberMarkersRef.current.forEach((marker) => marker.remove())
+
+    if (!showNearbyHunters) {
+      memberMarkersRef.current = []
+      return
+    }
+
     memberMarkersRef.current = memberLocations.map((member) => {
       const marker = new maplibregl.Marker({ color: "#16a34a" })
         .setLngLat([member.coordinates.lng, member.coordinates.lat])
@@ -118,10 +176,12 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
 
       return marker
     })
-  }, [memberLocations])
+  }, [memberLocations, showNearbyHunters])
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
+
+    registerTileCacheProtocol()
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
@@ -129,6 +189,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
       center: DEFAULT_CENTER,
       zoom: 11,
       attributionControl: true,
+      transformRequest: (url, resourceType) => cacheableRequest(url, resourceType),
     })
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), "top-right")
