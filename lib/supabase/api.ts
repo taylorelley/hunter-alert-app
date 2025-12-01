@@ -31,7 +31,7 @@ interface SanitizeMessagesResult {
 }
 
 interface SendBatchResult {
-  data: unknown[];
+  data: Record<string, unknown>[];
   error: null;
   dropped: SanitizedMessageRejection[];
 }
@@ -135,7 +135,11 @@ export async function sendBatch(
     throw error;
   }
 
-  return { data, error: null, dropped: rejected };
+  return {
+    data: (data ?? []) as Record<string, unknown>[],
+    error: null,
+    dropped: rejected,
+  };
 }
 
 /**
