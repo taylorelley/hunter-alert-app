@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import maplibregl, { Map, Marker } from "maplibre-gl"
+import "maplibre-gl/dist/maplibre-gl.css"
 import {
   MapPin,
   Locate,
@@ -19,6 +21,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useApp, type Waypoint } from "./app-provider"
 import { cn } from "@/lib/utils"
+import { calculateDistance, clearWatch, watchPosition, type Coordinates } from "@/lib/geolocation"
+import { useNetwork } from "./network-provider"
 
 const WAYPOINT_ICONS: Record<Waypoint["type"], typeof MapPin> = {
   camp: Tent,
@@ -29,118 +33,202 @@ const WAYPOINT_ICONS: Record<Waypoint["type"], typeof MapPin> = {
   custom: MapPin,
 }
 
-const WAYPOINT_POSITIONS = [
-  { top: "30%", left: "25%" },
-  { top: "65%", left: "70%" },
-  { top: "45%", left: "60%" },
-] as const
+const WAYPOINT_COLORS: Record<Waypoint["type"], string> = {
+  camp: "#2563eb",
+  vehicle: "#22c55e",
+  hazard: "#ef4444",
+  water: "#0ea5e9",
+  viewpoint: "#a855f7",
+  custom: "#6b7280",
+}
 
-const HUNTER_POSITIONS = [
-  { top: "35%", left: "40%" },
-  { top: "55%", left: "75%" },
-] as const
-
-const NEARBY_HUNTERS = [
-  { id: "1", name: "Tom W.", distance: "0.8 mi", bearing: "NW", lastCheckIn: "15m ago" },
-  { id: "2", name: "Dave B.", distance: "1.2 mi", bearing: "E", lastCheckIn: "32m ago" },
-]
+const MAP_STYLES: Record<"terrain" | "satellite", string> = {
+  terrain: "https://demotiles.maplibre.org/style.json",
+  satellite: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+}
 
 interface MapViewProps {
   onAddWaypoint: () => void
 }
 
+const DEFAULT_CENTER: [number, number] = [-103.5, 43.8]
+
 export function MapView({ onAddWaypoint }: MapViewProps) {
-  const { waypoints } = useApp()
+  const { waypoints, memberLocations, syncStatus, lastSyncedAt } = useApp()
+  const { state: network } = useNetwork()
   const [showLayers, setShowLayers] = useState(false)
   const [activeLayer, setActiveLayer] = useState<"terrain" | "satellite">("terrain")
   const [showNearbyHunters, setShowNearbyHunters] = useState(true)
   const [selectedWaypoint, setSelectedWaypoint] = useState<string | null>(null)
+  const [userLocation, setUserLocation] = useState<Coordinates | null>(null)
+
+  const mapContainerRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<Map | null>(null)
+  const waypointMarkersRef = useRef<Marker[]>([])
+  const memberMarkersRef = useRef<Marker[]>([])
+  const userMarkerRef = useRef<Marker | null>(null)
+
+  const formattedMembers = useMemo(
+    () =>
+      memberLocations.map((member) => {
+        const distance = userLocation
+          ? calculateDistance(
+              userLocation.latitude,
+              userLocation.longitude,
+              member.coordinates.lat,
+              member.coordinates.lng,
+            )
+          : null
+
+        return {
+          ...member,
+          distanceLabel: distance ? `${(distance / 1609.34).toFixed(1)} mi` : "--",
+        }
+      }),
+    [memberLocations, userLocation],
+  )
+
+  const refreshWaypointMarkers = useCallback(() => {
+    if (!mapRef.current) return
+
+    waypointMarkersRef.current.forEach((marker) => marker.remove())
+    waypointMarkersRef.current = waypoints.map((waypoint) => {
+      const marker = new maplibregl.Marker({ color: WAYPOINT_COLORS[waypoint.type] })
+        .setLngLat([waypoint.coordinates.lng, waypoint.coordinates.lat])
+        .addTo(mapRef.current as Map)
+
+      marker.getElement().classList.add("cursor-pointer")
+      marker.getElement().addEventListener("click", () =>
+        setSelectedWaypoint((current) => (current === waypoint.id ? null : waypoint.id)),
+      )
+
+      return marker
+    })
+  }, [waypoints])
+
+  const refreshMemberMarkers = useCallback(() => {
+    if (!mapRef.current) return
+
+    memberMarkersRef.current.forEach((marker) => marker.remove())
+    memberMarkersRef.current = memberLocations.map((member) => {
+      const marker = new maplibregl.Marker({ color: "#16a34a" })
+        .setLngLat([member.coordinates.lng, member.coordinates.lat])
+        .setPopup(new maplibregl.Popup({ closeButton: false }).setText(member.name))
+        .addTo(mapRef.current as Map)
+
+      return marker
+    })
+  }, [memberLocations])
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: MAP_STYLES[activeLayer],
+      center: DEFAULT_CENTER,
+      zoom: 11,
+      attributionControl: true,
+    })
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), "top-right")
+    map.once("load", () => {
+      ;(map as unknown as { setMaxTileCacheSize?: (size?: number) => void }).setMaxTileCacheSize?.(256)
+    })
+
+    mapRef.current = map
+
+    return () => {
+      map.remove()
+    }
+  }, [activeLayer])
+
+  useEffect(() => {
+    if (!mapRef.current) return
+    mapRef.current.setStyle(MAP_STYLES[activeLayer])
+  }, [activeLayer])
+
+  useEffect(() => {
+    let cancelled = false
+    let watchId: string | null = null
+
+    watchPosition(
+      (coords) => {
+        if (cancelled) return
+        setUserLocation(coords)
+
+        if (mapRef.current) {
+          mapRef.current.easeTo({ center: [coords.longitude, coords.latitude], duration: 750 })
+        }
+      },
+      (error) => {
+        console.error("Error watching position:", error)
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 },
+    )
+      .then((id) => {
+        if (!cancelled) {
+          watchId = id
+        }
+      })
+      .catch((error) => console.error("Failed to start geolocation watch", error))
+
+    return () => {
+      cancelled = true
+      if (watchId) {
+        clearWatch(watchId)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!mapRef.current || !userLocation) return
+
+    userMarkerRef.current?.remove()
+
+    const marker = new maplibregl.Marker({
+      element: (() => {
+        const el = document.createElement("div")
+        el.className = "relative"
+        el.innerHTML = `
+          <span class="absolute -inset-3 rounded-full bg-primary/20 animate-ping"></span>
+          <span class="absolute -inset-1.5 rounded-full bg-primary/30"></span>
+          <span class="relative block w-4 h-4 rounded-full bg-primary border-2 border-white shadow-lg"></span>
+        `
+        return el
+      })(),
+    })
+      .setLngLat([userLocation.longitude, userLocation.latitude])
+      .addTo(mapRef.current)
+
+    userMarkerRef.current = marker
+  }, [userLocation])
+
+  useEffect(() => {
+    refreshWaypointMarkers()
+  }, [refreshWaypointMarkers])
+
+  useEffect(() => {
+    refreshMemberMarkers()
+  }, [refreshMemberMarkers])
+
+  useEffect(() => {
+    refreshWaypointMarkers()
+    refreshMemberMarkers()
+  }, [refreshMemberMarkers, refreshWaypointMarkers, syncStatus, network.lastUpdated, lastSyncedAt])
+
+  const centerOnUser = useCallback(() => {
+    if (userLocation && mapRef.current) {
+      mapRef.current.easeTo({ center: [userLocation.longitude, userLocation.latitude], duration: 500, zoom: 12 })
+    }
+  }, [userLocation])
 
   return (
     <div className="flex-1 relative overflow-hidden">
-      {/* Map Background */}
-      <div className="absolute inset-0 bg-[#1a2e1a]">
-        <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage: `
-              linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px),
-              linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px)
-            `,
-            backgroundSize: "40px 40px",
-          }}
-        />
-
-        {/* Simulated terrain features */}
-        <div className="absolute top-1/4 left-1/3 w-32 h-32 rounded-full bg-[#2d4a2d] opacity-40 blur-2xl" />
-        <div className="absolute top-1/2 right-1/4 w-48 h-24 rounded-full bg-[#1e3a1e] opacity-50 blur-3xl" />
-        <div className="absolute bottom-1/3 left-1/4 w-24 h-48 rounded-full bg-[#3d5a3d] opacity-30 blur-2xl" />
-
-        {/* User location */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="relative">
-            <div className="absolute -inset-4 bg-primary/20 rounded-full animate-ping" />
-            <div className="absolute -inset-2 bg-primary/30 rounded-full" />
-            <div className="w-4 h-4 bg-primary rounded-full border-2 border-primary-foreground shadow-lg" />
-          </div>
-        </div>
-
-        {/* Waypoint markers */}
-        {waypoints.map((waypoint, index) => {
-          const Icon = WAYPOINT_ICONS[waypoint.type] || MapPin
-          const pos = WAYPOINT_POSITIONS[index % WAYPOINT_POSITIONS.length]
-
-          return (
-            <button
-              key={waypoint.id}
-              className={cn(
-                "absolute transform -translate-x-1/2 -translate-y-1/2 transition-transform hover:scale-110",
-                selectedWaypoint === waypoint.id && "scale-125",
-              )}
-              style={{ top: pos.top, left: pos.left }}
-              onClick={() => setSelectedWaypoint(selectedWaypoint === waypoint.id ? null : waypoint.id)}
-            >
-              <div
-                className={cn(
-                  "p-2 rounded-full shadow-lg",
-                  waypoint.type === "camp" && "bg-primary",
-                  waypoint.type === "vehicle" && "bg-accent",
-                  waypoint.type === "hazard" && "bg-danger",
-                  waypoint.type === "water" && "bg-blue-500",
-                  waypoint.type === "viewpoint" && "bg-purple-500",
-                  waypoint.type === "custom" && "bg-muted-foreground",
-                )}
-              >
-                <Icon className="w-4 h-4 text-white" />
-              </div>
-            </button>
-          )
-        })}
-
-        {/* Nearby hunters */}
-        {showNearbyHunters &&
-          NEARBY_HUNTERS.map((hunter, index) => {
-            const pos = HUNTER_POSITIONS[index % HUNTER_POSITIONS.length]
-
-            return (
-              <button
-                key={hunter.id}
-                className="absolute transform -translate-x-1/2 -translate-y-1/2"
-                style={{ top: pos.top, left: pos.left }}
-              >
-                <div className="relative">
-                  <div className="w-8 h-8 rounded-full bg-secondary border-2 border-safe flex items-center justify-center text-xs font-medium">
-                    {hunter.name.charAt(0)}
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-safe border border-background" />
-                </div>
-              </button>
-            )
-          })}
-      </div>
+      <div ref={mapContainerRef} className="absolute inset-0" />
 
       {/* Map Controls */}
-      <div className="absolute top-4 right-4 flex flex-col gap-2">
+      <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
         <Button
           variant="secondary"
           size="icon"
@@ -151,7 +239,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
         </Button>
 
         {showLayers && (
-          <Card className="absolute top-12 right-0 w-40 shadow-xl">
+          <Card className="absolute top-12 right-0 w-44 shadow-xl">
             <CardContent className="p-2">
               <button
                 onClick={() => setActiveLayer("terrain")}
@@ -160,7 +248,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
                   activeLayer === "terrain" ? "bg-primary text-primary-foreground" : "hover:bg-muted",
                 )}
               >
-                Terrain
+                Terrain (cached)
               </button>
               <button
                 onClick={() => setActiveLayer("satellite")}
@@ -176,7 +264,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
         )}
       </div>
 
-      <div className="absolute top-4 left-4">
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
         <Button
           variant="secondary"
           size="icon"
@@ -185,17 +273,20 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
         >
           <Users className={cn("w-5 h-5", showNearbyHunters && "text-primary")} />
         </Button>
+        <span className="text-xs bg-card/80 px-2 py-1 rounded-full shadow-sm">
+          Sync: {syncStatus} {lastSyncedAt ? `· ${new Date(lastSyncedAt).toLocaleTimeString()}` : ""}
+        </span>
       </div>
 
       {/* Recenter Button */}
-      <div className="absolute bottom-32 right-4">
-        <Button variant="secondary" size="icon" className="w-12 h-12 rounded-full shadow-lg">
+      <div className="absolute bottom-32 right-4 z-10">
+        <Button variant="secondary" size="icon" className="w-12 h-12 rounded-full shadow-lg" onClick={centerOnUser}>
           <Locate className="w-6 h-6" />
         </Button>
       </div>
 
       {/* Add Waypoint Button */}
-      <div className="absolute bottom-32 left-4">
+      <div className="absolute bottom-32 left-4 z-10">
         <Button onClick={onAddWaypoint} className="h-12 px-4 rounded-full shadow-lg">
           <Plus className="w-5 h-5 mr-2" />
           Add Waypoint
@@ -203,7 +294,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
       </div>
 
       {/* Compass */}
-      <div className="absolute bottom-32 left-1/2 -translate-x-1/2">
+      <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-10">
         <div className="w-12 h-12 rounded-full bg-card/90 backdrop-blur shadow-lg flex items-center justify-center">
           <Navigation className="w-5 h-5 text-danger transform -rotate-45" />
         </div>
@@ -211,7 +302,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
 
       {/* Selected Waypoint Detail */}
       {selectedWaypoint && (
-        <div className="absolute bottom-24 left-4 right-4">
+        <div className="absolute bottom-24 left-4 right-4 z-10">
           <Card className="shadow-xl">
             <CardContent className="p-4">
               {(() => {
@@ -242,7 +333,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
                       <h3 className="font-semibold">{waypoint.name}</h3>
                       <p className="text-sm text-muted-foreground">{waypoint.notes}</p>
                       <div className="flex items-center gap-2 mt-2">
-                        <Button size="sm" variant="outline">
+                        <Button size="sm" variant="outline" onClick={centerOnUser}>
                           <Navigation className="w-4 h-4 mr-1" />
                           Navigate
                         </Button>
@@ -264,23 +355,23 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
 
       {/* Nearby Hunters List */}
       {showNearbyHunters && (
-        <div className="absolute top-16 left-4 right-4">
+        <div className="absolute top-16 left-4 right-4 z-10">
           <Card className="bg-card/95 backdrop-blur shadow-lg">
             <CardContent className="p-3">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Nearby Hunters ({NEARBY_HUNTERS.length})
+                Nearby Hunters ({formattedMembers.length})
               </h3>
               <div className="space-y-2">
-                {NEARBY_HUNTERS.map((hunter) => (
+                {formattedMembers.map((hunter) => (
                   <div key={hunter.id} className="flex items-center gap-3 text-sm">
                     <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-xs font-medium">
                       {hunter.name.charAt(0)}
                     </div>
-                    <span className="flex-1 font-medium">{hunter.name}</span>
-                    <span className="text-muted-foreground">
-                      {hunter.distance} {hunter.bearing}
+                    <span className="flex-1 font-medium truncate">{hunter.name}</span>
+                    <span className="text-muted-foreground">{hunter.distanceLabel}</span>
+                    <span className="text-xs text-safe">
+                      {hunter.updatedAt ? new Date(hunter.updatedAt).toLocaleTimeString() : "Unknown"}
                     </span>
-                    <span className="text-xs text-safe">{hunter.lastCheckIn}</span>
                   </div>
                 ))}
               </div>

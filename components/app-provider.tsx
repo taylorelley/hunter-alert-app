@@ -44,6 +44,15 @@ export interface Waypoint {
   createdAt: Date
 }
 
+export interface MemberLocation {
+  id: string
+  name: string
+  coordinates: { lat: number; lng: number }
+  accuracy?: number
+  heading?: number | null
+  updatedAt?: string
+}
+
 export interface Geofence {
   id: string
   name: string
@@ -89,6 +98,7 @@ interface AppState {
   currentTrip: Trip | null
   trips: Trip[]
   waypoints: Waypoint[]
+  memberLocations: MemberLocation[]
   groups: Group[]
   geofences: Geofence[]
   checkInStatus: CheckInStatus
@@ -190,6 +200,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [backendGroups, setBackendGroups] = useState<APIGroup[]>([])
   const [backendWaypoints, setBackendWaypoints] = useState<APIWaypoint[]>([])
   const [backendGeofences, setBackendGeofences] = useState<APIGeofence[]>([])
+  const [backendProfiles, setBackendProfiles] = useState<APIProfile[]>([])
   const [syncCursor, setSyncCursor] = useState<string | null>(null)
 
   const [state, setState] = useState<AppState>({
@@ -198,6 +209,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     currentTrip: null,
     trips: [],
     waypoints: [],
+    memberLocations: [],
     groups: [],
     geofences: [],
     checkInStatus: "pending",
@@ -270,9 +282,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setBackendGeofences(result.geofences)
       }
 
+      if (result.profiles && result.profiles.length > 0) {
+        setBackendProfiles(result.profiles as APIProfile[])
+      }
+
       // Update profile if returned
       if (result.profiles && result.profiles.length > 0) {
-        const profileData = result.profiles[0] as unknown as APIProfile
+        const allProfiles = result.profiles as APIProfile[]
+        const profileData =
+          (session?.user?.id && allProfiles.find((profile) => profile.id === session.user.id)) || allProfiles[0]
         setProfile(profileData)
         setState((prev) => ({
           ...prev,
@@ -282,7 +300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }))
       }
     },
-    [],
+    [session?.user?.id],
   )
 
   const applySendResults = useCallback((actions: PendingAction[], records: Record<string, unknown>[]) => {
@@ -559,13 +577,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdAt: new Date(geofence.created_at),
     }))
 
+    const uiMemberLocations: MemberLocation[] = backendProfiles
+      .map((profile) => {
+        const metadata = (profile as Record<string, unknown>).metadata as Record<string, unknown> | undefined
+        const lastLocation = (metadata?.last_location || metadata?.lastLocation) as Record<string, unknown> | undefined
+
+        const lat = typeof lastLocation?.latitude === "number" ? lastLocation.latitude : Number(lastLocation?.lat)
+        const lng = typeof lastLocation?.longitude === "number" ? lastLocation.longitude : Number(lastLocation?.lng)
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          return null
+        }
+
+        return {
+          id: profile.id,
+          name: profile.display_name || profile.email || "Member",
+          coordinates: { lat, lng },
+          accuracy: typeof lastLocation?.accuracy === "number" ? lastLocation.accuracy : undefined,
+          heading: typeof lastLocation?.heading === "number" ? lastLocation.heading : null,
+          updatedAt:
+            typeof lastLocation?.updated_at === "string"
+              ? lastLocation.updated_at
+              : typeof lastLocation?.timestamp === "string"
+                ? lastLocation.timestamp
+                : profile.updated_at,
+        }
+      })
+      .filter((item): item is MemberLocation => Boolean(item))
+
     setState((prev) => ({
       ...prev,
       waypoints: uiWaypoints,
+      memberLocations: uiMemberLocations,
       groups: uiGroups,
       geofences: uiGeofences,
     }))
-  }, [backendWaypoints, backendGroups, backendGeofences])
+  }, [backendWaypoints, backendGroups, backendGeofences, backendProfiles])
 
   const contextValue = useMemo<AppContextValue>(
     () => ({
