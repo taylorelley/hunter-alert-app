@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { appConfig } from '@/lib/config/env';
+import { MAX_MESSAGE_BYTES } from '@/lib/config/constants';
 import {
   AuthResult,
   MessageDraft,
@@ -12,39 +13,80 @@ import {
 
 const DEFAULT_BATCH_LIMIT = appConfig.constraints.backendMaxMessageBatch.value;
 const DEFAULT_PULL_LIMIT = appConfig.constraints.backendMaxPullLimit.value;
-const MAX_MESSAGE_BYTES = 4 * 1024;
 
-function getMessageSizeBytes(message: MessageDraft, encoder: TextEncoder): number {
-  const bodyBytes = encoder.encode(message.body ?? "").byteLength;
-  const metadataBytes = message.metadata
-    ? encoder.encode(JSON.stringify(message.metadata)).byteLength
-    : 0;
-  return bodyBytes + metadataBytes;
+type SanitizedMessageRejectionReason =
+  | 'empty_body'
+  | 'oversize'
+  | 'metadata_not_serializable';
+
+interface SanitizedMessageRejection {
+  draft: MessageDraft;
+  reason: SanitizedMessageRejectionReason;
+  bytes?: number;
+}
+
+const textEncoder = new TextEncoder();
+
+function getMessageSizeBytes(message: MessageDraft): number | null {
+  const bodyBytes = textEncoder.encode(message.body ?? '').byteLength;
+
+  if (!message.metadata) {
+    return bodyBytes;
+  }
+
+  try {
+    const serializedMetadata = JSON.stringify(message.metadata);
+    const metadataBytes = serializedMetadata
+      ? textEncoder.encode(serializedMetadata).byteLength
+      : 0;
+    return bodyBytes + metadataBytes;
+  } catch (error) {
+    console.warn('Unable to serialize message metadata; dropping message', error);
+    return null;
+  }
 }
 
 function clampBatch(messages: MessageDraft[], limit: number): MessageDraft[] {
   return messages.slice(0, Math.max(limit, 1));
 }
 
-function sanitizeMessages(messages: MessageDraft[]): MessageDraft[] {
-  const encoder = new TextEncoder();
+function sanitizeMessages(messages: MessageDraft[]): {
+  accepted: MessageDraft[];
+  rejected: SanitizedMessageRejection[];
+} {
+  const accepted: MessageDraft[] = [];
+  const rejected: SanitizedMessageRejection[] = [];
 
-  return messages
-    .map((message) => ({
+  for (const message of messages) {
+    const normalizedDraft: MessageDraft = {
       ...message,
-      body: message.body.trim(),
-    }))
-    .filter((message) => message.body.length > 0)
-    .filter((message) => {
-      const messageSize = getMessageSizeBytes(message, encoder);
-      if (messageSize > MAX_MESSAGE_BYTES) {
-        console.warn(
-          `Dropping message exceeding ${MAX_MESSAGE_BYTES} bytes (got ${messageSize} bytes)`,
-        );
-        return false;
-      }
-      return true;
-    });
+      body: (message.body ?? '').trim(),
+    };
+
+    if (normalizedDraft.body.length === 0) {
+      rejected.push({ draft: message, reason: 'empty_body' });
+      continue;
+    }
+
+    const messageSize = getMessageSizeBytes(normalizedDraft);
+
+    if (messageSize === null) {
+      rejected.push({ draft: message, reason: 'metadata_not_serializable' });
+      continue;
+    }
+
+    if (messageSize > MAX_MESSAGE_BYTES) {
+      console.warn(
+        `Dropping message exceeding ${MAX_MESSAGE_BYTES} bytes (got ${messageSize} bytes)`,
+      );
+      rejected.push({ draft: message, reason: 'oversize', bytes: messageSize });
+      continue;
+    }
+
+    accepted.push(normalizedDraft);
+  }
+
+  return { accepted, rejected };
 }
 
 export async function authenticate(
@@ -65,13 +107,15 @@ export async function sendBatch(
   drafts: MessageDraft[],
   maxBatchSize = DEFAULT_BATCH_LIMIT,
 ) {
-  if (drafts.length > maxBatchSize) {
+  const { accepted, rejected } = sanitizeMessages(drafts);
+
+  if (accepted.length > maxBatchSize) {
     throw new Error(`Batch too large; maximum allowed is ${maxBatchSize} messages.`);
   }
 
-  const payload = clampBatch(sanitizeMessages(drafts), maxBatchSize);
+  const payload = clampBatch(accepted, maxBatchSize);
   if (payload.length === 0) {
-    return { data: [], error: null };
+    return { data: [], error: null, dropped: rejected };
   }
 
   const { data, error } = await client.rpc('send_message_batch', {
@@ -82,7 +126,7 @@ export async function sendBatch(
     throw error;
   }
 
-  return { data, error: null };
+  return { data, error: null, dropped: rejected };
 }
 
 /**

@@ -60,6 +60,7 @@ describe('supabase api wrapper', () => {
       ],
     });
     expect(result.data).toEqual(['ok']);
+    expect(result.dropped).toEqual([{ draft: drafts[1], reason: 'empty_body' }]);
   });
 
   it('skips RPC when sanitized payload is empty', async () => {
@@ -70,7 +71,27 @@ describe('supabase api wrapper', () => {
     const result = await sendBatch(client, drafts, 5);
 
     expect(client.rpc).not.toHaveBeenCalled();
-    expect(result).toEqual({ data: [], error: null });
+    expect(result).toEqual({ data: [], error: null, dropped: [{ draft: drafts[0], reason: 'empty_body' }] });
+  });
+
+  it('drops messages with unserializable metadata without failing the batch', async () => {
+    const client = mockClient();
+    (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: ['ok'], error: null });
+
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    const drafts: MessageDraft[] = [
+      { conversation_id: 'c1', body: 'valid message' },
+      { conversation_id: 'c1', body: 'bad metadata', metadata: circular },
+    ];
+
+    const result = await sendBatch(client, drafts, 5);
+
+    expect(result.data).toEqual(['ok']);
+    expect(result.dropped).toEqual([
+      { draft: drafts[1], reason: 'metadata_not_serializable' },
+    ]);
   });
 
   it('slices pull_updates responses to maxRows and handles missing collections', async () => {
