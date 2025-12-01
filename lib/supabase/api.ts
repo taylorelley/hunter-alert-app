@@ -1,6 +1,14 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { appConfig } from '@/lib/config/env';
-import { AuthResult, MessageDraft, PullUpdatesResult, Group, Waypoint, Geofence } from './types';
+import {
+  AuthResult,
+  MessageDraft,
+  PullUpdatesResult,
+  Group,
+  Waypoint,
+  Geofence,
+  GroupInvitation,
+} from './types';
 
 const DEFAULT_BATCH_LIMIT = appConfig.constraints.backendMaxMessageBatch.value;
 const DEFAULT_PULL_LIMIT = appConfig.constraints.backendMaxPullLimit.value;
@@ -60,8 +68,8 @@ export async function sendBatch(
  * Pull updates from the server since the given timestamp.
  *
  * Note: maxRows is applied independently to each entity type (conversations, messages,
- * sync_cursors, groups, waypoints, geofences, profiles), so the total response may
- * contain up to 7× maxRows entities across all collections.
+ * sync_cursors, groups, group_invitations, group_activity, waypoints, geofences, profiles),
+ * so the total response may contain up to 9× maxRows entities across all collections.
  *
  * @param client - Supabase client
  * @param since - ISO timestamp of last sync, or null for initial sync
@@ -84,6 +92,8 @@ export async function pullUpdates(
     messages: [],
     sync_cursors: [],
     groups: [],
+    group_invitations: [],
+    group_activity: [],
     waypoints: [],
     geofences: [],
     profiles: [],
@@ -98,6 +108,12 @@ export async function pullUpdates(
       ? data.sync_cursors.slice(0, maxRows)
       : [];
     result.groups = Array.isArray(data.groups) ? data.groups.slice(0, maxRows) : [];
+    result.group_invitations = Array.isArray(data.group_invitations)
+      ? data.group_invitations.slice(0, maxRows)
+      : [];
+    result.group_activity = Array.isArray(data.group_activity)
+      ? data.group_activity.slice(0, maxRows)
+      : [];
     result.waypoints = Array.isArray(data.waypoints) ? data.waypoints.slice(0, maxRows) : [];
     result.geofences = Array.isArray(data.geofences) ? data.geofences.slice(0, maxRows) : [];
     result.profiles = Array.isArray(data.profiles) ? data.profiles.slice(0, maxRows) : [];
@@ -147,6 +163,49 @@ export async function leaveGroup(client: SupabaseClient, groupId: string): Promi
   }
 
   return data as boolean;
+}
+
+export async function inviteToGroup(
+  client: SupabaseClient,
+  params: { groupId: string; email: string; role?: 'member' | 'admin' },
+): Promise<GroupInvitation> {
+  const normalizedEmail = params.email.trim();
+  if (!normalizedEmail) {
+    throw new Error('Invitation email is required');
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    throw new Error('Invalid email format');
+  }
+
+  const { data, error } = await client.rpc('create_group_invitation', {
+    group_id: params.groupId,
+    invite_email: normalizedEmail,
+    invite_role: params.role ?? 'member',
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as GroupInvitation;
+}
+
+export async function respondToGroupInvite(
+  client: SupabaseClient,
+  invitationId: string,
+  decision: 'accept' | 'decline',
+): Promise<GroupInvitation> {
+  const { data, error } = await client.rpc('respond_group_invitation', {
+    invitation_id: invitationId,
+    decision,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as GroupInvitation;
 }
 
 // Waypoint management functions
@@ -259,6 +318,24 @@ export async function toggleGeofence(
   const { data, error } = await client.rpc('toggle_geofence', {
     geofence_id: geofenceId,
     is_enabled: enabled,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Geofence;
+}
+
+export async function updateGeofenceAlerts(
+  client: SupabaseClient,
+  params: { geofenceId: string; notifyOnEntry: boolean; notifyOnExit: boolean; enabled?: boolean },
+): Promise<Geofence> {
+  const { data, error } = await client.rpc('update_geofence_alerts', {
+    geofence_id: params.geofenceId,
+    notify_entry: params.notifyOnEntry,
+    notify_exit: params.notifyOnExit,
+    is_enabled: params.enabled ?? true,
   });
 
   if (error) {

@@ -3,11 +3,30 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 import { Session, User } from "@supabase/supabase-js"
 import { createSupabaseClient } from "@/lib/supabase/client"
-import { authenticate, createGroup as apiCreateGroup, addWaypoint as apiAddWaypoint, createGeofence as apiCreateGeofence } from "@/lib/supabase/api"
+import {
+  authenticate,
+  createGroup as apiCreateGroup,
+  addWaypoint as apiAddWaypoint,
+  createGeofence as apiCreateGeofence,
+  inviteToGroup as apiInviteToGroup,
+  respondToGroupInvite as apiRespondToGroupInvite,
+  joinGroup as apiJoinGroup,
+  leaveGroup as apiLeaveGroup,
+  toggleGeofence as apiToggleGeofence,
+  updateGeofenceAlerts as apiUpdateGeofenceAlerts,
+} from "@/lib/supabase/api"
 import { useNetwork } from "./network-provider"
 import { useSyncEngine } from "@/lib/sync/use-sync-engine"
 import { PendingAction } from "@/lib/sync/types"
-import { PullUpdatesResult, Group as APIGroup, Waypoint as APIWaypoint, Geofence as APIGeofence, Profile as APIProfile } from "@/lib/supabase/types"
+import {
+  PullUpdatesResult,
+  Group as APIGroup,
+  Waypoint as APIWaypoint,
+  Geofence as APIGeofence,
+  Profile as APIProfile,
+  GroupInvitation as APIGroupInvitation,
+  GroupActivity as APIGroupActivity,
+} from "@/lib/supabase/types"
 
 export type TripStatus = "none" | "planning" | "active" | "paused" | "completed"
 export type CheckInStatus = "ok" | "pending" | "overdue"
@@ -63,6 +82,8 @@ export interface Geofence {
   enabled: boolean
   notifyOnEntry: boolean
   notifyOnExit: boolean
+  groupId: string | null
+  conversationId: string | null
   createdAt: Date
 }
 
@@ -72,6 +93,28 @@ export interface Group {
   description: string
   members: { id: string; name: string; role: "owner" | "admin" | "member" }[]
   waypoints: Waypoint[]
+  role: "owner" | "admin" | "member"
+}
+
+export interface GroupInvitation {
+  id: string
+  groupId: string
+  senderId: string
+  recipientId: string | null
+  recipientEmail: string | null
+  role: "member" | "admin"
+  status: "pending" | "accepted" | "declined"
+  createdAt: Date
+}
+
+export interface GroupActivity {
+  id: string
+  groupId: string
+  actorId: string
+  actorName: string
+  type: "create" | "invite" | "join" | "leave" | "geofence" | "waypoint" | "role_change" | "alert"
+  description: string
+  createdAt: Date
 }
 
 type ConversationRecord = {
@@ -101,6 +144,8 @@ interface AppState {
   memberLocations: MemberLocation[]
   groups: Group[]
   geofences: Geofence[]
+  groupInvitations: GroupInvitation[]
+  groupActivity: GroupActivity[]
   checkInStatus: CheckInStatus
   nextCheckInDue: Date | null
   sosActive: boolean
@@ -133,6 +178,15 @@ interface AppContextValue extends AppState {
     groupId?: string
     conversationId?: string
   }) => Promise<void>
+  inviteToGroup: (groupId: string, email: string, role?: "member" | "admin") => Promise<void>
+  respondToInvitation: (invitationId: string, decision: "accept" | "decline") => Promise<void>
+  joinGroup: (groupId: string) => Promise<void>
+  leaveGroup: (groupId: string) => Promise<void>
+  toggleGeofenceAlerts: (geofenceId: string, enabled: boolean) => Promise<void>
+  updateGeofenceAlerts: (
+    geofenceId: string,
+    options: { notifyOnEntry: boolean; notifyOnExit: boolean; enabled?: boolean },
+  ) => Promise<void>
   triggerSOS: (silent: boolean) => void
   cancelSOS: () => void
 }
@@ -145,6 +199,16 @@ function uniqueId() {
 
 function parseDate(value: unknown, fallback = new Date()): Date {
   return typeof value === "string" ? new Date(value) : fallback
+}
+
+function mergeRecords<T extends { id?: string }>(current: T[], incoming: T[]): T[] {
+  if (!incoming.length) return current
+  const map = new Map(current.map((item) => [item.id ?? uniqueId(), item]))
+  incoming.forEach((item) => {
+    const key = item.id ?? uniqueId()
+    map.set(key, { ...(map.get(key) ?? {}), ...item })
+  })
+  return Array.from(map.values())
 }
 
 function mapConversationToTrip(conversation: ConversationRecord, messages: MessageRecord[]): Trip {
@@ -199,6 +263,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [conversations, setConversations] = useState<ConversationRecord[]>([])
   const [messages, setMessages] = useState<MessageRecord[]>([])
   const [backendGroups, setBackendGroups] = useState<APIGroup[]>([])
+  const [backendGroupInvitations, setBackendGroupInvitations] = useState<APIGroupInvitation[]>([])
+  const [backendGroupActivity, setBackendGroupActivity] = useState<APIGroupActivity[]>([])
   const [backendWaypoints, setBackendWaypoints] = useState<APIWaypoint[]>([])
   const [backendGeofences, setBackendGeofences] = useState<APIGeofence[]>([])
   const [backendProfiles, setBackendProfiles] = useState<APIProfile[]>([])
@@ -213,6 +279,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     memberLocations: [],
     groups: [],
     geofences: [],
+    groupInvitations: [],
+    groupActivity: [],
     checkInStatus: "pending",
     nextCheckInDue: null,
     sosActive: false,
@@ -236,6 +304,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProfile(null)
     setConversations([])
     setMessages([])
+    setBackendGroups([])
+    setBackendGroupInvitations([])
+    setBackendGroupActivity([])
+    setBackendWaypoints([])
+    setBackendGeofences([])
+    setBackendProfiles([])
   }, [supabase])
 
   const refreshProfile = useCallback(async () => {
@@ -244,6 +318,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (data) {
       const profileData = data as unknown as APIProfile
       setProfile(profileData)
+      setBackendProfiles((prev) => mergeRecords(prev, [profileData]))
       setState((prev) => ({
         ...prev,
         userName: profileData.display_name || prev.userName,
@@ -255,7 +330,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const applyRemote = useCallback(
     (result: PullUpdatesResult) => {
-      setConversations((result.conversations ?? []) as ConversationRecord[])
+      setConversations((prev) => mergeRecords(prev, (result.conversations ?? []) as ConversationRecord[]))
       setMessages((prev) => {
         const merged = [...prev]
         const byId = new Map(merged.map((item) => [item.id ?? item.client_id ?? uniqueId(), item]))
@@ -271,31 +346,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         return Array.from(byId.values())
       })
-
-      // Update groups, waypoints, and geofences from backend
-      if (result.groups && result.groups.length > 0) {
-        setBackendGroups(result.groups)
-      }
-      if (result.waypoints && result.waypoints.length > 0) {
-        setBackendWaypoints(result.waypoints)
-      }
-      if (result.geofences && result.geofences.length > 0) {
-        setBackendGeofences(result.geofences)
-      }
+      setBackendGroups((prev) => mergeRecords(prev, result.groups ?? []))
+      setBackendGroupInvitations((prev) => mergeRecords(prev, result.group_invitations ?? []))
+      setBackendGroupActivity((prev) => mergeRecords(prev, result.group_activity ?? []))
+      setBackendWaypoints((prev) => mergeRecords(prev, result.waypoints ?? []))
+      setBackendGeofences((prev) => mergeRecords(prev, result.geofences ?? []))
 
       if (result.profiles && result.profiles.length > 0) {
-        setBackendProfiles(result.profiles as APIProfile[])
+        setBackendProfiles((prev) => mergeRecords(prev, result.profiles as APIProfile[]))
 
-        const allProfiles = result.profiles as APIProfile[]
         const profileData =
-          (session?.user?.id && allProfiles.find((profile) => profile.id === session.user.id)) || allProfiles[0]
-        setProfile(profileData)
-        setState((prev) => ({
-          ...prev,
-          userName: profileData.display_name || prev.userName,
-          isPremium: Boolean(profileData.is_premium),
-          emergencyContacts: profileData.emergency_contacts || prev.emergencyContacts,
-        }))
+          (session?.user?.id && result.profiles.find((profile) => profile.id === session.user.id)) ||
+          result.profiles[0]
+
+        if (profileData) {
+          setProfile(profileData as APIProfile)
+          setState((prev) => ({
+            ...prev,
+            userName: (profileData as APIProfile).display_name || prev.userName,
+            isPremium: Boolean((profileData as APIProfile).is_premium),
+            emergencyContacts: (profileData as APIProfile).emergency_contacts || prev.emergencyContacts,
+          }))
+        }
       }
     },
     [session?.user?.id],
@@ -531,7 +603,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         })
 
         // Optimistically update local state
-        setBackendWaypoints((prev) => [result, ...prev])
+        setBackendWaypoints((prev) => mergeRecords(prev, [result]))
         await flush() // Trigger sync to get latest data
       } catch (error) {
         console.error("Error adding waypoint:", error)
@@ -547,7 +619,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       try {
         const result = await apiCreateGroup(supabase, name, description)
-        setBackendGroups((prev) => [result, ...prev])
+        setBackendGroups((prev) => mergeRecords(prev, [result]))
         await flush() // Trigger sync to get latest data
       } catch (error) {
         console.error("Error creating group:", error)
@@ -571,12 +643,92 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       try {
         const result = await apiCreateGeofence(supabase, params)
-        setBackendGeofences((prev) => [result, ...prev])
+        setBackendGeofences((prev) => mergeRecords(prev, [result]))
         await flush() // Trigger sync to get latest data
       } catch (error) {
         console.error("Error creating geofence:", error)
         throw error
       }
+    },
+    [flush, session, supabase],
+  )
+
+  const inviteToGroup = useCallback(
+    async (groupId: string, email: string, role: "member" | "admin" = "member") => {
+      if (!session) throw new Error("Sign-in required to invite to group")
+
+      const result = await apiInviteToGroup(supabase, { groupId, email, role })
+      setBackendGroupInvitations((prev) => mergeRecords(prev, [result]))
+      await flush()
+    },
+    [flush, session, supabase],
+  )
+
+  const respondToInvitation = useCallback(
+    async (invitationId: string, decision: "accept" | "decline") => {
+      if (!session) throw new Error("Sign-in required to respond to invitation")
+
+      const result = await apiRespondToGroupInvite(supabase, invitationId, decision)
+      setBackendGroupInvitations((prev) => mergeRecords(prev, [result]))
+      await flush()
+    },
+    [flush, session, supabase],
+  )
+
+  const joinGroup = useCallback(
+    async (groupId: string) => {
+      if (!session) throw new Error("Sign-in required to join group")
+      const result = await apiJoinGroup(supabase, groupId)
+      setBackendGroups((prev) => mergeRecords(prev, [result]))
+      await flush()
+    },
+    [flush, session, supabase],
+  )
+
+  const leaveGroup = useCallback(
+    async (groupId: string) => {
+      if (!session) throw new Error("Sign-in required to leave group")
+
+      await apiLeaveGroup(supabase, groupId)
+      setBackendGroups((prev) =>
+        prev.map((group) =>
+          group.id === groupId
+            ? {
+                ...group,
+                member_ids: group.member_ids.filter((id) => id !== session.user.id),
+                member_roles: Object.fromEntries(
+                  Object.entries(group.member_roles || {}).filter(([id]) => id !== session.user.id),
+                ) as APIGroup["member_roles"],
+              }
+            : group,
+        ),
+      )
+      await flush()
+    },
+    [flush, session, supabase],
+  )
+
+  const toggleGeofenceAlerts = useCallback(
+    async (geofenceId: string, enabled: boolean) => {
+      if (!session) throw new Error("Sign-in required to update geofence")
+      const updated = await apiToggleGeofence(supabase, geofenceId, enabled)
+      setBackendGeofences((prev) => mergeRecords(prev, [updated]))
+      await flush()
+    },
+    [flush, session, supabase],
+  )
+
+  const updateGeofenceAlerts = useCallback(
+    async (geofenceId: string, options: { notifyOnEntry: boolean; notifyOnExit: boolean; enabled?: boolean }) => {
+      if (!session) throw new Error("Sign-in required to update geofence alerts")
+      const updated = await apiUpdateGeofenceAlerts(supabase, {
+        geofenceId,
+        notifyOnEntry: options.notifyOnEntry,
+        notifyOnExit: options.notifyOnExit,
+        enabled: options.enabled,
+      })
+      setBackendGeofences((prev) => mergeRecords(prev, [updated]))
+      await flush()
     },
     [flush, session, supabase],
   )
@@ -592,6 +744,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Convert backend waypoints and groups to UI format
   useEffect(() => {
+    const profileMap = new Map(backendProfiles.map((profile) => [profile.id, profile]))
+    const currentUserId = session?.user?.id
+
     // Convert backend waypoints to UI format
     const uiWaypoints: Waypoint[] = backendWaypoints.map((wp) => ({
       id: wp.id,
@@ -604,17 +759,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }))
 
     // Convert backend groups to UI format
-    const uiGroups: Group[] = backendGroups.map((g) => ({
-      id: g.id,
-      name: g.name,
-      description: g.description || "",
-      members: g.member_ids.map((id, index) => ({
-        id,
-        name: id === g.owner_id ? "Owner" : `Member ${index + 1}`,
-        role: id === g.owner_id ? "owner" : "member",
-      })),
-      waypoints: [], // Waypoints are managed separately
-    }))
+    const uiGroups: Group[] = backendGroups.map((g) => {
+      const members = g.member_ids.map((id, index) => {
+        const profile = profileMap.get(id)
+        const role = (g.member_roles?.[id] as Group["members"][number]["role"]) ||
+          (id === g.owner_id ? "owner" : "member")
+        return {
+          id,
+          name: profile?.display_name || profile?.email || `Member ${index + 1}`,
+          role,
+        }
+      })
+
+      const role =
+        (currentUserId && (g.member_roles?.[currentUserId] as Group["role"])) ||
+        (currentUserId === g.owner_id ? "owner" : "member")
+
+      return {
+        id: g.id,
+        name: g.name,
+        description: g.description || "",
+        members,
+        waypoints: [], // Waypoints are managed separately
+        role,
+      }
+    })
 
     const uiGeofences: Geofence[] = backendGeofences.map((geofence) => ({
       id: geofence.id,
@@ -626,6 +795,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       enabled: geofence.enabled,
       notifyOnEntry: geofence.notify_on_entry,
       notifyOnExit: geofence.notify_on_exit,
+      groupId: geofence.group_id,
+      conversationId: geofence.conversation_id,
       createdAt: new Date(geofence.created_at),
     }))
 
@@ -657,14 +828,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
       .filter((item): item is MemberLocation => Boolean(item))
 
+    const uiInvitations: GroupInvitation[] = backendGroupInvitations.map((invite) => ({
+      id: invite.id,
+      groupId: invite.group_id,
+      senderId: invite.sender_id,
+      recipientId: invite.recipient_id,
+      recipientEmail: invite.recipient_email,
+      role: invite.role,
+      status: invite.status,
+      createdAt: new Date(invite.created_at),
+    }))
+
+    const uiActivity: GroupActivity[] = backendGroupActivity
+      .map((activity) => ({
+        id: activity.id,
+        groupId: activity.group_id,
+        actorId: activity.actor_id,
+        actorName:
+          profileMap.get(activity.actor_id)?.display_name ||
+          profileMap.get(activity.actor_id)?.email ||
+          "Member",
+        type: activity.activity_type,
+        description: activity.description || activity.activity_type,
+        createdAt: new Date(activity.created_at),
+      }))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+
     setState((prev) => ({
       ...prev,
       waypoints: uiWaypoints,
       memberLocations: uiMemberLocations,
       groups: uiGroups,
       geofences: uiGeofences,
+      groupInvitations: uiInvitations,
+      groupActivity: uiActivity,
     }))
-  }, [backendWaypoints, backendGroups, backendGeofences, backendProfiles])
+  }, [
+    backendWaypoints,
+    backendGroups,
+    backendGeofences,
+    backendProfiles,
+    backendGroupInvitations,
+    backendGroupActivity,
+    session?.user?.id,
+  ])
 
   const contextValue = useMemo<AppContextValue>(
     () => ({
@@ -685,6 +892,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addWaypoint,
       createGroup,
       createGeofence,
+      inviteToGroup,
+      respondToInvitation,
+      joinGroup,
+      leaveGroup,
+      toggleGeofenceAlerts,
+      updateGeofenceAlerts,
       triggerSOS,
       cancelSOS,
     }),
@@ -692,12 +905,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addWaypoint,
       cancelSOS,
       checkIn,
+      inviteToGroup,
+      respondToInvitation,
+      joinGroup,
+      leaveGroup,
       createGeofence,
       createGroup,
       endTrip,
       lastSyncedAt,
       pending,
       profile,
+      toggleGeofenceAlerts,
+      updateGeofenceAlerts,
       refresh,
       session,
       signIn,
