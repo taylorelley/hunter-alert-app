@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   User,
   Bell,
@@ -28,7 +28,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
-import { EmergencyContact, PrivacySettings, useApp } from "./app-provider"
+import { EmergencyContact, PrivacySettings, SmsAlertPreferences, useApp } from "./app-provider"
 import { useNetwork } from "./network-provider"
 import { AdminDebugPanel } from "./admin-debug-panel"
 import { BillingSettings } from "./billing-settings"
@@ -44,6 +44,8 @@ export function ProfileView() {
     deviceSessions,
     currentDevice,
     deviceSessionId,
+    pushSubscriptions,
+    smsAlerts,
     signIn,
     signOut,
     session,
@@ -55,6 +57,11 @@ export function ProfileView() {
     sendTestContactNotification,
     privacySettings,
     updatePrivacySettings,
+    registerPushSubscription,
+    togglePushSubscription,
+    beginSmsOptIn,
+    verifySmsCode,
+    updateSmsPreferences,
   } = useApp()
   const { state: network } = useNetwork()
   const [privacyError, setPrivacyError] = useState<string | null>(null)
@@ -71,7 +78,21 @@ export function ProfileView() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [contactError, setContactError] = useState<string | null>(null)
   const [testModalOpen, setTestModalOpen] = useState(false)
+  const [pushStatus, setPushStatus] = useState<string | null>(null)
+  const [pushError, setPushError] = useState<string | null>(null)
+  const [pushLoading, setPushLoading] = useState(false)
+  const [smsPhone, setSmsPhone] = useState("")
+  const [smsCode, setSmsCode] = useState("")
+  const [smsStatusMessage, setSmsStatusMessage] = useState<string | null>(null)
+  const [smsError, setSmsError] = useState<string | null>(null)
+  const [smsLoading, setSmsLoading] = useState(false)
   const showAdminDebug = process.env.NEXT_PUBLIC_ENABLE_ADMIN_DEBUG === "true"
+
+  useEffect(() => {
+    if (smsAlerts?.phone) {
+      setSmsPhone(smsAlerts.phone)
+    }
+  }, [smsAlerts?.phone])
 
   const handleSignIn = async () => {
     setAuthError(null)
@@ -164,6 +185,85 @@ export function ProfileView() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to save privacy preference"
       setPrivacyError(message)
+    }
+  }
+
+  const handleRegisterPush = async () => {
+    setPushError(null)
+    setPushStatus(null)
+    setPushLoading(true)
+    try {
+      await registerPushSubscription()
+      setPushStatus("Device registered for push alerts")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to register for push notifications"
+      setPushError(message)
+    } finally {
+      setPushLoading(false)
+    }
+  }
+
+  const handleTogglePush = async (id: string, enabled: boolean) => {
+    setPushError(null)
+    try {
+      await togglePushSubscription(id, enabled)
+      setPushStatus(enabled ? "Push alerts enabled" : "Push alerts disabled")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update push alerts"
+      setPushError(message)
+    }
+  }
+
+  const handleBeginSms = async () => {
+    setSmsError(null)
+    setSmsStatusMessage(null)
+    setSmsLoading(true)
+    try {
+      await beginSmsOptIn({
+        phone: smsPhone,
+        allowCheckIns: smsAlerts?.allowCheckIns ?? true,
+        allowSOS: smsAlerts?.allowSOS ?? true,
+      })
+      setSmsStatusMessage("Verification code sent. Enter the code to finish enabling SMS alerts.")
+      setSmsCode("")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to start SMS verification"
+      setSmsError(message)
+    } finally {
+      setSmsLoading(false)
+    }
+  }
+
+  const handleVerifySms = async () => {
+    setSmsError(null)
+    setSmsStatusMessage(null)
+    setSmsLoading(true)
+    try {
+      await verifySmsCode(smsCode)
+      setSmsStatusMessage("SMS alerts verified")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Verification failed"
+      setSmsError(message)
+    } finally {
+      setSmsLoading(false)
+    }
+  }
+
+  const handleSmsPreferenceChange = async (changes: Partial<{ allowCheckIns: boolean; allowSOS: boolean; status: string }>) => {
+    setSmsError(null)
+    if (!smsAlerts) {
+      setSmsError("Start verification first to manage SMS alerts")
+      return
+    }
+    try {
+      await updateSmsPreferences({
+        allowCheckIns: changes.allowCheckIns,
+        allowSOS: changes.allowSOS,
+        status: changes.status as SmsAlertPreferences["status"] | undefined,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update SMS alert preferences"
+      setSmsError(message)
     }
   }
 
@@ -403,21 +503,119 @@ export function ProfileView() {
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Notifications</h2>
           <Card>
-            <CardContent className="p-0">
-              <button className="flex items-center justify-between p-4 w-full hover:bg-muted/50 transition-colors">
+            <CardContent className="p-4 space-y-4">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Bell className="w-5 h-5 text-muted-foreground" />
-                  <span className="font-medium">Push Notifications</span>
+                  <Bell className="w-5 h-5 text-primary" />
+                  <div>
+                    <p className="font-medium">Push notifications</p>
+                    <p className="text-xs text-muted-foreground">
+                      Register this device to receive check-in and SOS alerts.
+                    </p>
+                  </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </button>
-              <button className="flex items-center justify-between p-4 w-full hover:bg-muted/50 transition-colors border-t border-border">
-                <div className="flex items-center gap-3">
-                  <Radio className="w-5 h-5 text-muted-foreground" />
-                  <span className="font-medium">SMS Alerts</span>
+                <Button onClick={handleRegisterPush} disabled={!session || pushLoading} size="sm">
+                  {pushLoading ? "Registering..." : "Register"}
+                </Button>
+              </div>
+              {pushError && <p className="text-sm text-danger">{pushError}</p>}
+              {pushStatus && <p className="text-sm text-safe">{pushStatus}</p>}
+              <div className="space-y-2">
+                {pushSubscriptions.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No push tokens registered yet. Run from a native build to activate push alerts.
+                  </p>
+                )}
+                {pushSubscriptions.map((subscription) => (
+                  <div key={subscription.id} className="flex items-center justify-between rounded-lg border border-border p-3">
+                    <div className="space-y-1">
+                      <p className="font-medium text-sm">{subscription.platform} • {subscription.environment}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {subscription.deviceSessionId ? `Session ${subscription.deviceSessionId}` : "No session"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Updated {subscription.updatedAt.toLocaleString()}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={subscription.enabled}
+                      onCheckedChange={(value) => handleTogglePush(subscription.id, value)}
+                      disabled={!session}
+                      aria-label={subscription.enabled ? "Disable push alerts" : "Enable push alerts"}
+                    />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 space-y-4">
+              <div className="flex items-center gap-3">
+                <Radio className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="font-medium">SMS alerts</p>
+                  <p className="text-xs text-muted-foreground">
+                    Receive SMS for check-ins and SOS when data is limited.
+                  </p>
                 </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </button>
+              </div>
+              <div className="space-y-2">
+                <input
+                  type="tel"
+                  value={smsPhone}
+                  onChange={(e) => setSmsPhone(e.target.value)}
+                  className="w-full p-3 rounded-lg bg-input border border-border text-sm"
+                  placeholder="+1 (555) 555-1234"
+                  disabled={!session || smsLoading}
+                />
+                <div className="flex flex-wrap gap-2 items-center">
+                  <Button onClick={handleBeginSms} disabled={!session || !smsPhone || smsLoading} size="sm">
+                    {smsLoading ? "Sending..." : smsAlerts?.status === "pending" ? "Resend code" : "Verify number"}
+                  </Button>
+                  {smsAlerts?.status === "pending" && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={smsCode}
+                        onChange={(e) => setSmsCode(e.target.value)}
+                        className="w-28 p-2 rounded-lg bg-input border border-border text-sm"
+                        placeholder="Code"
+                        disabled={smsLoading}
+                      />
+                      <Button onClick={handleVerifySms} disabled={!smsCode || smsLoading} size="sm" variant="secondary">
+                        Verify
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <Switch
+                    checked={smsAlerts?.allowCheckIns ?? true}
+                    onCheckedChange={(value) => handleSmsPreferenceChange({ allowCheckIns: value })}
+                    disabled={!session || smsAlerts?.status === "pending"}
+                  />
+                  Check-in texts
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Switch
+                    checked={smsAlerts?.allowSOS ?? true}
+                    onCheckedChange={(value) => handleSmsPreferenceChange({ allowSOS: value })}
+                    disabled={!session || smsAlerts?.status === "pending"}
+                  />
+                  SOS texts
+                </label>
+              </div>
+              {smsAlerts?.status && (
+                <p className="text-xs text-muted-foreground">
+                  Status: {smsAlerts.status === "verified" ? "Verified" : smsAlerts.status === "pending" ? "Awaiting code" : "Disabled"}
+                  {smsAlerts.lastDispatchedAt && ` • Last sent ${smsAlerts.lastDispatchedAt.toLocaleString()}`}
+                </p>
+              )}
+              {smsStatusMessage && <p className="text-sm text-safe">{smsStatusMessage}</p>}
+              {smsError && <p className="text-sm text-danger">{smsError}</p>}
             </CardContent>
           </Card>
         </div>

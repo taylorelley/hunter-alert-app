@@ -195,6 +195,8 @@ describe('supabase api wrapper', () => {
       { user_id: 'user-2', share_location: false },
       { user_id: 'user-3', share_location: true },
     ];
+    const push_subscriptions: unknown[] = [];
+    const sms_alert_subscriptions: unknown[] = [];
     (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         conversations,
@@ -208,6 +210,8 @@ describe('supabase api wrapper', () => {
         profiles,
         device_sessions,
         privacy_settings,
+        push_subscriptions,
+        sms_alert_subscriptions,
       },
       error: null,
     });
@@ -225,6 +229,8 @@ describe('supabase api wrapper', () => {
       profiles,
       device_sessions: device_sessions.slice(0, 2),
       privacy_settings: privacy_settings.slice(0, 2),
+      push_subscriptions,
+      sms_alert_subscriptions,
     });
   });
 

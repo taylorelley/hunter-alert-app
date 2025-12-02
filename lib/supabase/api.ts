@@ -12,6 +12,8 @@ import {
   GroupInvitation,
   DeviceSession,
   PrivacySettingsRow,
+  PushSubscriptionRow,
+  SmsAlertSubscriptionRow,
 } from './types';
 
 type EmergencyContactPayload = {
@@ -197,6 +199,8 @@ export async function pullUpdates(
     profiles: [],
     device_sessions: [],
     privacy_settings: [],
+    push_subscriptions: [],
+    sms_alert_subscriptions: [],
   };
 
   if (data && typeof data === 'object') {
@@ -222,6 +226,12 @@ export async function pullUpdates(
       : [];
     result.privacy_settings = Array.isArray(data.privacy_settings)
       ? (data.privacy_settings.slice(0, maxRows) as PrivacySettingsRow[])
+      : [];
+    result.push_subscriptions = Array.isArray(data.push_subscriptions)
+      ? data.push_subscriptions.slice(0, maxRows)
+      : [];
+    result.sms_alert_subscriptions = Array.isArray(data.sms_alert_subscriptions)
+      ? data.sms_alert_subscriptions.slice(0, maxRows)
       : [];
   }
 
@@ -318,6 +328,130 @@ export async function listDeviceSessions(client: SupabaseClient): Promise<Device
   }
 
   return (data ?? []) as DeviceSession[];
+}
+
+export async function upsertPushSubscription(
+  client: SupabaseClient,
+  payload: {
+    token: string;
+    deviceSessionId?: string | null;
+    platform?: string | null;
+    environment?: string | null;
+    enabled?: boolean;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<PushSubscriptionRow> {
+  const { data, error } = await client
+    .from('push_subscriptions')
+    .upsert(
+      {
+        token: payload.token,
+        device_session_id: payload.deviceSessionId ?? null,
+        platform: payload.platform ?? null,
+        environment: payload.environment ?? null,
+        enabled: payload.enabled ?? true,
+        metadata: payload.metadata ?? {},
+      },
+      { onConflict: 'user_id,token' },
+    )
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as PushSubscriptionRow;
+}
+
+export async function togglePushSubscription(
+  client: SupabaseClient,
+  id: string,
+  enabled: boolean,
+): Promise<PushSubscriptionRow> {
+  const { data, error } = await client
+    .from('push_subscriptions')
+    .update({ enabled })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as PushSubscriptionRow;
+}
+
+export async function beginSmsVerification(
+  client: SupabaseClient,
+  payload: { phone: string; allowCheckIns?: boolean; allowSos?: boolean },
+): Promise<SmsAlertSubscriptionRow> {
+  const { data, error } = await client.rpc('begin_sms_verification', {
+    phone: payload.phone,
+    allow_checkins: payload.allowCheckIns ?? true,
+    allow_sos: payload.allowSos ?? true,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as SmsAlertSubscriptionRow;
+}
+
+export async function confirmSmsVerification(client: SupabaseClient, code: string): Promise<SmsAlertSubscriptionRow> {
+  const { data, error } = await client.rpc('confirm_sms_verification', { code });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as SmsAlertSubscriptionRow;
+}
+
+export async function updateSmsPreferences(
+  client: SupabaseClient,
+  payload: Partial<Pick<SmsAlertSubscriptionRow, 'allow_checkins' | 'allow_sos' | 'status'>> & { phone?: string },
+): Promise<SmsAlertSubscriptionRow> {
+  const updatePayload: Partial<SmsAlertSubscriptionRow> = {};
+  if (typeof payload.allow_checkins === 'boolean') updatePayload.allow_checkins = payload.allow_checkins;
+  if (typeof payload.allow_sos === 'boolean') updatePayload.allow_sos = payload.allow_sos;
+  if (typeof payload.status === 'string') updatePayload.status = payload.status as SmsAlertSubscriptionRow['status'];
+  if (typeof payload.phone === 'string') updatePayload.phone = payload.phone;
+
+  const { data: userResult, error: userError } = await client.auth.getUser();
+  if (userError) throw userError;
+  const userId = userResult.user?.id;
+  if (!userId) throw new Error('Authentication required');
+
+  const { data, error } = await client
+    .from('sms_alert_subscriptions')
+    .update(updatePayload)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as SmsAlertSubscriptionRow;
+}
+
+export async function dispatchSmsAlert(
+  client: SupabaseClient,
+  payload: { type: 'checkin' | 'sos'; message: string; tripId?: string | null; checkInId?: string | null; location?: unknown },
+): Promise<Record<string, unknown>> {
+  const { data, error } = await client.functions.invoke('dispatch-alerts', {
+    body: payload,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? {}) as Record<string, unknown>;
 }
 
 export async function leaveGroup(client: SupabaseClient, groupId: string): Promise<boolean> {
