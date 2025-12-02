@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Session, User } from "@supabase/supabase-js"
 import { createSupabaseClient } from "@/lib/supabase/client"
+import { getCustomerInfo, getOfferings, purchasePackage, restorePurchases, type BillingOffering } from "@/lib/billing/client"
 import {
   authenticate,
   createGroup as apiCreateGroup,
@@ -36,6 +37,12 @@ import {
 import { Device } from "@capacitor/device"
 import { persistCachedDeviceSessions, readCachedDeviceSessions } from "@/lib/storage/device-sessions"
 import { getClientSessionId } from "@/lib/device/session-id"
+
+export const FREE_MIN_CHECKIN_CADENCE_HOURS = 6
+const FREE_HISTORY_DAYS = 14
+const PREMIUM_HISTORY_DAYS = 90
+const FREE_MAX_CHECK_INS = 20
+const PREMIUM_MAX_CHECK_INS = 200
 
 export type TripStatus = "none" | "planning" | "active" | "paused" | "completed"
 export type CheckInStatus = "ok" | "pending" | "overdue"
@@ -192,12 +199,19 @@ interface AppContextValue extends AppState {
   pendingActions: PendingAction[]
   syncStatus: string
   lastSyncedAt: string | null
+  billingOfferings: BillingOffering[]
+  billingLoading: boolean
+  billingError: string | null
+  billingReceipt: string | null
   deviceSessionId: string | null
+  signUp: (params: { email: string; password: string; displayName?: string }) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   refresh: () => Promise<void>
   refreshDeviceSessions: () => Promise<void>
   revokeDeviceSession: (sessionId: string) => Promise<void>
+  purchasePremium: (packageId?: string, offeringId?: string) => Promise<void>
+  restorePremium: () => Promise<void>
   startTrip: (trip: Omit<Trip, "id" | "checkIns" | "status">) => Promise<void>
   updateTrip: (tripId: string, trip: Omit<Trip, "id" | "checkIns">) => Promise<void>
   endTrip: () => Promise<void>
@@ -389,6 +403,13 @@ function mapConversationToTrip(conversation: ConversationRecord, messages: Messa
   }
 }
 
+function clampCheckIns(checkIns: CheckIn[], isPremium: boolean): CheckIn[] {
+  const max = isPremium ? PREMIUM_MAX_CHECK_INS : FREE_MAX_CHECK_INS
+  const horizonDays = isPremium ? PREMIUM_HISTORY_DAYS : FREE_HISTORY_DAYS
+  const cutoff = Date.now() - horizonDays * 24 * 60 * 60 * 1000
+  return checkIns.filter((checkIn) => checkIn.timestamp.getTime() >= cutoff).slice(0, max)
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const { state: network } = useNetwork()
   const [supabase] = useState(() => createSupabaseClient())
@@ -405,6 +426,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [backendProfiles, setBackendProfiles] = useState<APIProfile[]>([])
   const [backendDeviceSessions, setBackendDeviceSessions] = useState<DeviceSession[]>([])
   const [syncCursor, setSyncCursor] = useState<string | null>(null)
+  const [billingOfferings, setBillingOfferings] = useState<BillingOffering[]>([])
+  const [billingReceipt, setBillingReceipt] = useState<string | null>(null)
+  const [billingError, setBillingError] = useState<string | null>(null)
+  const [billingLoading, setBillingLoading] = useState(false)
   const [deviceSessionId] = useState<string | null>(() => (typeof window === "undefined" ? null : getClientSessionId()))
   const revocationCheckRef = useRef(false)
 
@@ -455,6 +480,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return state.lastSOSLocation
     }
   }, [state.lastSOSLocation])
+
+  const signUp = useCallback(
+    async ({ email, password, displayName }: { email: string; password: string; displayName?: string }) => {
+      const { data, error } = await supabase.auth.signUp({ email, password })
+      if (error) throw error
+
+      const newUser = data.user
+      const newSession = data.session ?? null
+      if (newSession) setSession(newSession)
+      if (newUser) setUser(newUser)
+
+      if (!newUser) return
+
+      const profilePayload: APIProfile = {
+        id: newUser.id,
+        display_name: displayName || newUser.email || "New hunter",
+        avatar_url: null,
+        email: newUser.email ?? null,
+        phone: newUser.phone ?? null,
+        emergency_contacts: [],
+        is_premium: false,
+        privacy_settings: { shareLocation: true, showOnMap: true, notifyContacts: true },
+        metadata: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: profilePayload.id,
+        display_name: profilePayload.display_name,
+        avatar_url: profilePayload.avatar_url,
+        email: profilePayload.email,
+        phone: profilePayload.phone,
+        emergency_contacts: profilePayload.emergency_contacts,
+        is_premium: profilePayload.is_premium,
+        privacy_settings: profilePayload.privacy_settings,
+        metadata: profilePayload.metadata,
+      })
+
+      if (profileError) throw profileError
+
+      setProfile(profilePayload)
+      setBackendProfiles((prev) => mergeRecords(prev, [profilePayload]))
+      setState((prev) => ({
+        ...prev,
+        userName: profilePayload.display_name || prev.userName,
+        isPremium: false,
+        emergencyContacts: profilePayload.emergency_contacts || prev.emergencyContacts,
+      }))
+    },
+    [supabase],
+  )
 
   const refreshDeviceSessions = useCallback(async () => {
     if (!session) return
@@ -515,6 +592,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSession(null)
     setUser(null)
     setProfile(null)
+    setBillingOfferings([])
+    setBillingReceipt(null)
+    setBillingError(null)
+    setBillingLoading(false)
     setConversations([])
     setMessages([])
     setBackendGroups([])
@@ -526,7 +607,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBackendDeviceSessions([])
     persistCachedDeviceSessions([])
     revocationCheckRef.current = false
-  }, [supabase])
+    setState({
+      isOnline: network.connectivity !== "offline",
+      isPremium: false,
+      currentTrip: null,
+      trips: [],
+      waypoints: [],
+      memberLocations: [],
+      groups: [],
+      geofences: [],
+      groupInvitations: [],
+      groupActivity: [],
+      deviceSessions: [],
+      currentDevice: null,
+      checkInStatus: "pending",
+      nextCheckInDue: null,
+      sosActive: false,
+      sosStatus: "idle",
+      lastSOSLocation: null,
+      userName: "Guest",
+      emergencyContacts: [],
+    })
+  }, [network.connectivity, supabase])
 
   const refreshProfile = useCallback(async () => {
     if (!supabase || !session) return
@@ -543,6 +645,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }))
     }
   }, [session, supabase])
+
+  const persistEntitlement = useCallback(
+    async (active: boolean, receipt?: string | null) => {
+      const previousIsPremium = state.isPremium
+      const previousReceipt = billingReceipt
+      setState((prev) => ({ ...prev, isPremium: active }))
+      setBillingReceipt((prev) => receipt ?? prev)
+      if (!session) return active
+
+      const baseProfile =
+        profile || backendProfiles.find((item) => item.id === session.user.id) ||
+        ({ id: session.user.id } as APIProfile)
+
+      const updatedProfile = { ...baseProfile, is_premium: active }
+
+      const attemptPersist = async () =>
+        supabase.from("profiles").update({ is_premium: active }).eq("id", session.user.id)
+
+      const firstAttempt = await attemptPersist()
+      const retryAttempt = firstAttempt.error ? await attemptPersist() : firstAttempt
+
+      if (retryAttempt.error) {
+        console.error("Failed to persist entitlement", retryAttempt.error)
+        setBillingError(retryAttempt.error.message)
+        setState((prev) => ({ ...prev, isPremium: previousIsPremium }))
+        setBillingReceipt(previousReceipt)
+        return previousIsPremium
+      }
+
+      setBillingError(null)
+      setProfile((prev) => (prev ? { ...prev, is_premium: active } : prev))
+      setBackendProfiles((prev) => mergeRecords(prev, [updatedProfile]))
+      return active
+    },
+    [backendProfiles, billingReceipt, profile, session, state.isPremium, supabase],
+  )
 
   const applyRemote = useCallback(
     (result: PullUpdatesResult) => {
@@ -642,11 +780,83 @@ export function AppProvider({ children }: { children: ReactNode }) {
     onSendApplied: applySendResults,
   })
 
+  const loadBillingOfferings = useCallback(async () => {
+    try {
+      const offerings = await getOfferings(session?.user?.id)
+      setBillingOfferings(offerings)
+      setBillingError(null)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load purchase options"
+      setBillingError(message)
+    }
+  }, [session?.user?.id])
+
+  const refreshBillingEntitlement = useCallback(async () => {
+    if (!session) return
+    setBillingLoading(true)
+    setBillingError(null)
+    try {
+      const result = await getCustomerInfo(session.user.id)
+      if (result) {
+        await persistEntitlement(result.entitlementActive, result.receipt ?? null)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to refresh purchases"
+      setBillingError(message)
+    } finally {
+      setBillingLoading(false)
+    }
+  }, [persistEntitlement, session])
+
+  const purchasePremium = useCallback(
+    async (packageId?: string, offeringId?: string) => {
+      if (!session) throw new Error("Sign-in required before purchasing")
+      const targetOffering = offeringId || billingOfferings[0]?.id
+      const targetPackage = packageId || billingOfferings[0]?.packages[0]?.id || "pro_monthly"
+      setBillingLoading(true)
+      setBillingError(null)
+      try {
+        const result = await purchasePackage(targetPackage, targetOffering, session.user.id)
+        await persistEntitlement(result.entitlementActive, result.receipt ?? null)
+        if (!result.entitlementActive) {
+          setBillingError("Purchase completed but entitlement is inactive. Restore purchases or contact support.")
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to complete purchase"
+        setBillingError(message)
+        throw error
+      } finally {
+        setBillingLoading(false)
+      }
+    },
+    [billingOfferings, persistEntitlement, session],
+  )
+
+  const restorePremium = useCallback(async () => {
+    if (!session) throw new Error("Sign-in required to restore purchases")
+    setBillingLoading(true)
+    setBillingError(null)
+    try {
+      const result = await restorePurchases(session.user.id)
+      await persistEntitlement(result.entitlementActive, result.receipt ?? null)
+      if (!result.entitlementActive) {
+        setBillingError("No active subscriptions were found to restore.")
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to restore purchases"
+      setBillingError(message)
+      throw error
+    } finally {
+      setBillingLoading(false)
+    }
+  }, [persistEntitlement, session])
+
   const refresh = useCallback(async () => {
     await refreshProfile()
+    await refreshBillingEntitlement()
     await refreshDeviceSessions()
     await flush()
-  }, [flush, refreshDeviceSessions, refreshProfile])
+  }, [flush, refreshBillingEntitlement, refreshDeviceSessions, refreshProfile])
 
   useEffect(() => {
     if (!deviceSessionId || !session) return
@@ -680,6 +890,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [flush, refreshProfile, session, user])
 
   useEffect(() => {
+    loadBillingOfferings()
+  }, [loadBillingOfferings])
+
+  useEffect(() => {
+    if (!session) return
+    refreshBillingEntitlement()
+  }, [refreshBillingEntitlement, session])
+
+  useEffect(() => {
     if (!conversations.length) {
       setState((prev) => ({ ...prev, currentTrip: null, trips: [], checkInStatus: "pending", nextCheckInDue: null }))
       return
@@ -687,6 +906,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const mappedTrips = conversations
       .map((conversation) => mapConversationToTrip(conversation, messages))
+      .map((trip) => ({
+        ...trip,
+        checkIns: clampCheckIns(trip.checkIns, state.isPremium),
+        checkInCadence: state.isPremium
+          ? trip.checkInCadence
+          : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS),
+      }))
       .sort((a, b) => b.startDate.getTime() - a.startDate.getTime())
 
     const activeTrip = mappedTrips.find((trip) => trip.status === "active") || null
@@ -705,7 +931,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       checkInStatus: activeTrip ? (pendingCheck ? "pending" : overdue ? "overdue" : "ok") : "pending",
       nextCheckInDue: activeTrip ? nextDue : null,
     }))
-  }, [conversations, messages])
+  }, [conversations, messages, state.isPremium])
 
   useEffect(() => {
     const tripId = state.currentTrip?.id
@@ -770,10 +996,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const startTrip = useCallback(
     async (trip: Omit<Trip, "id" | "checkIns" | "status">) => {
       if (!session) throw new Error("Sign-in required before starting a trip")
+      const normalizedCadence = state.isPremium
+        ? trip.checkInCadence
+        : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS)
       const metadata = {
         destination: trip.destination,
         notes: trip.notes,
-        checkInCadence: trip.checkInCadence,
+        checkInCadence: normalizedCadence,
         emergencyContacts: trip.emergencyContacts,
         startDate: trip.startDate.toISOString(),
         endDate: trip.endDate.toISOString(),
@@ -796,17 +1025,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await flush()
       }
     },
-    [flush, session, supabase],
+    [flush, session, state.isPremium, supabase],
   )
 
   const updateTrip = useCallback(
     async (tripId: string, trip: Omit<Trip, "id" | "checkIns">) => {
       if (!session) throw new Error("Sign-in required before updating a trip")
 
+      const normalizedCadence = state.isPremium
+        ? trip.checkInCadence
+        : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS)
       const metadata = {
         destination: trip.destination,
         notes: trip.notes,
-        checkInCadence: trip.checkInCadence,
+        checkInCadence: normalizedCadence,
         emergencyContacts: trip.emergencyContacts,
         startDate: trip.startDate.toISOString(),
         endDate: trip.endDate.toISOString(),
@@ -830,7 +1062,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       await flush()
     },
-    [flush, session, supabase],
+    [flush, session, state.isPremium, supabase],
   )
 
   const endTrip = useCallback(async () => {
@@ -869,6 +1101,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const checkIn = useCallback(
     async (statusValue: "ok" | "need-help", notes: string) => {
       if (!state.currentTrip || !session) throw new Error("Active trip and session required to check in")
+      const enforcedCadenceHours = state.isPremium
+        ? state.currentTrip.checkInCadence
+        : Math.max(state.currentTrip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS)
+      const lastCheckIn = state.currentTrip.checkIns[0]
+      if (!state.isPremium && lastCheckIn) {
+        const nextWindow = lastCheckIn.timestamp.getTime() + enforcedCadenceHours * 60 * 60 * 1000
+        if (Date.now() < nextWindow) {
+          throw new Error(
+            `High-frequency check-ins are reserved for Pro. Next check-in available at ${new Date(nextWindow).toLocaleString()}`,
+          )
+        }
+      }
       const actionId = uniqueId()
       const payload = {
         conversation_id: state.currentTrip.id,
@@ -901,7 +1145,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
       ])
     },
-    [enqueue, session, state.currentTrip],
+    [enqueue, session, state.currentTrip, state.isPremium],
   )
 
   const addWaypoint = useCallback(
@@ -1286,12 +1530,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pendingActions: pending,
       syncStatus: status,
       lastSyncedAt,
+      billingOfferings,
+      billingLoading,
+      billingError,
+      billingReceipt,
       deviceSessionId,
-      refreshDeviceSessions,
-      revokeDeviceSession,
+      signUp,
       signIn,
       signOut,
       refresh,
+      refreshDeviceSessions,
+      revokeDeviceSession,
+      purchasePremium,
+      restorePremium,
       startTrip,
       endTrip,
       updateTrip,
@@ -1311,34 +1562,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }),
     [
       addWaypoint,
+      billingError,
+      billingLoading,
+      billingOfferings,
+      billingReceipt,
       cancelSOS,
       checkIn,
-      inviteToGroup,
-      respondToInvitation,
-      joinGroup,
-      leaveGroup,
       createGeofence,
       createGroup,
+      deviceSessionId,
       endTrip,
+      inviteToGroup,
+      joinGroup,
       lastSyncedAt,
+      leaveGroup,
       pending,
       profile,
-      toggleGeofenceAlerts,
-      updateGeofenceAlerts,
+      purchasePremium,
       refresh,
       refreshDeviceSessions,
+      respondToInvitation,
+      restorePremium,
+      resolveSOS,
+      revokeDeviceSession,
       session,
       signIn,
       signOut,
+      signUp,
       startTrip,
-      updateTrip,
       state,
       status,
-      deviceSessionId,
-      revokeDeviceSession,
-      user,
+      toggleGeofenceAlerts,
       triggerSOS,
-      resolveSOS,
+      updateGeofenceAlerts,
+      updateTrip,
+      user,
     ],
   )
 

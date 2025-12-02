@@ -28,6 +28,11 @@ interface AppConfig {
     syncUltraBatchLimit: NumberSetting
     syncBaseBackoffMs: NumberSetting
   }
+  billing: {
+    revenueCatApiKey: string
+    entitlementId: string
+    offeringId: string
+  }
 }
 
 function resolveNumberSetting(definition: {
@@ -81,6 +86,11 @@ const supabaseUrl =
 const supabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''
 
+const revenueCatApiKey =
+  process.env.NEXT_PUBLIC_REVENUECAT_API_KEY || process.env.REVENUECAT_API_KEY || ''
+const revenueCatEntitlement = process.env.NEXT_PUBLIC_REVENUECAT_ENTITLEMENT || 'pro'
+const revenueCatOffering = process.env.NEXT_PUBLIC_REVENUECAT_OFFERING || 'default'
+
 export const appConfig: AppConfig = {
   supabase: {
     url: supabaseUrl,
@@ -94,6 +104,11 @@ export const appConfig: AppConfig = {
     syncSatelliteBatchLimit: limits.SYNC_SATELLITE_BATCH_LIMIT,
     syncUltraBatchLimit: limits.SYNC_ULTRA_BATCH_LIMIT,
     syncBaseBackoffMs: limits.SYNC_BASE_BACKOFF_MS,
+  },
+  billing: {
+    revenueCatApiKey,
+    entitlementId: revenueCatEntitlement,
+    offeringId: revenueCatOffering,
   },
 }
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type JSX } from "react"
 import { AppProvider, type Trip } from "@/components/app-provider"
 import { NetworkProvider } from "@/components/network-provider"
 import { MobileNav } from "@/components/mobile-nav"
@@ -14,8 +14,10 @@ import { CheckInModal } from "@/components/modals/check-in-modal"
 import { SOSModal } from "@/components/modals/sos-modal"
 import { AddWaypointModal } from "@/components/modals/add-waypoint-modal"
 import { PlanTripModal } from "@/components/modals/plan-trip-modal"
+import { AuthView } from "@/components/auth-view"
+import { useApp } from "@/components/app-provider"
 
-function HunterAlertApp() {
+function HunterAlertApp(): JSX.Element {
   const [activeTab, setActiveTab] = useState("home")
   const [showCheckIn, setShowCheckIn] = useState(false)
   const [showSOS, setShowSOS] = useState(false)
@@ -74,11 +76,21 @@ function HunterAlertApp() {
   )
 }
 
-export default function Page() {
+function AppContent(): JSX.Element {
+  const { session } = useApp()
+
+  if (!session) {
+    return <AuthView />
+  }
+
+  return <HunterAlertApp />
+}
+
+export default function Page(): JSX.Element {
   return (
     <NetworkProvider>
       <AppProvider>
-        <HunterAlertApp />
+        <AppContent />
       </AppProvider>
     </NetworkProvider>
   )
