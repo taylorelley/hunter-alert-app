@@ -54,6 +54,7 @@ export interface Waypoint {
   longitude: number;
   waypoint_type: 'stand' | 'camera' | 'camp' | 'vehicle' | 'water' | 'landmark' | 'custom';
   shared: boolean;
+  group_id?: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
