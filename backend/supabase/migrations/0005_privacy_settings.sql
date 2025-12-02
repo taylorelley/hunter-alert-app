@@ -59,8 +59,9 @@ create policy privacy_settings_update on privacy_settings
 for update using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
--- Allow trusted viewers to see sanitized profiles while honoring sharing preferences.
-create or replace policy profiles_select on profiles
+drop policy if exists profiles_select on profiles;
+
+create policy profiles_select on profiles
 for select using (
   id = auth.uid()
   or id in (

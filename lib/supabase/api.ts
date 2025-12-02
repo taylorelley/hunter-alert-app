@@ -611,7 +611,6 @@ export async function upsertPrivacySettings(
   const { data, error } = await client
     .from('privacy_settings')
     .upsert(settings)
-    .eq('user_id', settings.user_id)
     .select()
     .maybeSingle();
 

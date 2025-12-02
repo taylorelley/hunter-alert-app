@@ -389,6 +389,7 @@ export function ProfileView() {
                   </div>
                 </div>
                 <Switch
+                  // Invert the toggle so "Anonymous" maps to showOnMap = false
                   checked={!privacySettings.showOnMap}
                   onCheckedChange={(value) => handlePrivacyToggle({ showOnMap: !value })}
                 />
