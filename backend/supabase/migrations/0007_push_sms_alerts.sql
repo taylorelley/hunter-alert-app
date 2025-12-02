@@ -34,6 +34,9 @@ create policy push_subscriptions_update on push_subscriptions
 for update using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
+create policy push_subscriptions_delete on push_subscriptions
+for delete using (user_id = auth.uid());
+
 -- SMS alert opt-in with verification and per-channel preferences
 create table if not exists sms_alert_subscriptions (
   user_id uuid primary key references auth.users (id) on delete cascade,
@@ -65,6 +68,9 @@ create policy sms_alert_subscriptions_update on sms_alert_subscriptions
 for update using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
+create policy sms_alert_subscriptions_delete on sms_alert_subscriptions
+for delete using (user_id = auth.uid());
+
 -- Begin SMS verification with a short-lived code
 create or replace function public.begin_sms_verification(
   phone text,
@@ -83,7 +89,7 @@ begin
     raise exception 'A valid phone number is required';
   end if;
 
-  generated_code := lpad((floor(random() * 1000000))::text, 6, '0');
+  generated_code := lpad((abs(('x' || encode(gen_random_bytes(4), 'hex'))::bit(32)::int) % 1000000)::text, 6, '0');
 
   insert into sms_alert_subscriptions (
     user_id,

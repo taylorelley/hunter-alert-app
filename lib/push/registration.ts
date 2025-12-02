@@ -17,12 +17,17 @@ export async function requestPushRegistration(): Promise<PushRegistrationResult>
     throw new Error("Push notifications are only available on a native build")
   }
 
-  const permission = await PushNotifications.checkPermissions()
-  if (permission.receive !== "granted") {
-    const request = await PushNotifications.requestPermissions()
-    if (request.receive !== "granted") {
-      throw new Error("Push notifications are not permitted")
+  try {
+    const permission = await PushNotifications.checkPermissions()
+    if (permission.receive !== "granted") {
+      const request = await PushNotifications.requestPermissions()
+      if (request.receive !== "granted") {
+        throw new Error("Push notifications are not permitted")
+      }
     }
+  } catch (error) {
+    console.error("Push permission check failed", error)
+    throw new Error("Unable to check push notification permissions")
   }
 
   return new Promise<PushRegistrationResult>((resolve, reject) => {

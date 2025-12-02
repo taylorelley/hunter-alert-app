@@ -1470,7 +1470,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }).catch((error) => console.warn("SMS dispatch failed", error))
       }
     },
-    [dispatchSmsAlert, enqueue, network.connectivity, session, state.currentTrip, state.isPremium, state.smsAlerts],
+    [enqueue, network.connectivity, session, state.currentTrip, state.isPremium, state.smsAlerts, supabase],
   )
 
   const addWaypoint = useCallback(
@@ -1772,12 +1772,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [
       buildSOSPayload,
-      dispatchSmsAlert,
       enqueue,
       network.connectivity,
       session,
       state.currentTrip?.id,
       state.smsAlerts,
+      supabase,
     ],
   )
 

@@ -19,6 +19,7 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")
 const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID")
 const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN")
 const TWILIO_FROM_NUMBER = Deno.env.get("TWILIO_FROM_NUMBER")
+const NODE_ENV = Deno.env.get("NODE_ENV") ?? "production"
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.warn("Supabase environment variables are missing; auth will fail")
@@ -26,8 +27,15 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 async function sendSms(to: string, body: string): Promise<{ ok: boolean; status: number; message: string }> {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER) {
-    console.log("Twilio credentials missing; simulating SMS send")
-    return { ok: true, status: 202, message: "Simulated SMS delivery" }
+    const simulatedMessage = "Simulated SMS - credentials missing"
+    const logMethod = NODE_ENV === "development" ? console.warn : console.error
+    logMethod(`SIMULATED SMS to ${redactPhone(to)}: ${simulatedMessage}`)
+
+    if (NODE_ENV === "development") {
+      return { ok: true, status: 202, message: simulatedMessage }
+    }
+
+    return { ok: false, status: 503, message: simulatedMessage }
   }
 
   const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`
@@ -108,6 +116,10 @@ serve(async (req) => {
     return new Response("Missing alert payload", { status: 400 })
   }
 
+  if (payload.message.length > 1600) {
+    return new Response("Message too long", { status: 400 })
+  }
+
   const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
   })
@@ -155,13 +167,22 @@ serve(async (req) => {
     })
   }
 
-  await client
+  const { error: updateError } = await client
     .from("sms_alert_subscriptions")
     .update({ last_dispatched_at: new Date().toISOString() })
     .eq("user_id", authData.user.id)
 
+  if (updateError) {
+    console.error("Failed to update last_dispatched_at", updateError)
+  }
+
   return new Response(
-    JSON.stringify({ delivered: true, phone: redactPhone(subscription.phone), message: smsResult.message }),
+    JSON.stringify({
+      delivered: true,
+      phone: redactPhone(subscription.phone),
+      message: smsResult.message,
+      warning: updateError ? "Failed to record dispatch timestamp" : undefined,
+    }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   )
 })

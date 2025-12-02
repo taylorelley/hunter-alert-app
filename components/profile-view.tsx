@@ -86,13 +86,19 @@ export function ProfileView() {
   const [smsStatusMessage, setSmsStatusMessage] = useState<string | null>(null)
   const [smsError, setSmsError] = useState<string | null>(null)
   const [smsLoading, setSmsLoading] = useState(false)
+  const [smsPhoneEdited, setSmsPhoneEdited] = useState(false)
   const showAdminDebug = process.env.NEXT_PUBLIC_ENABLE_ADMIN_DEBUG === "true"
 
+  const isValidPhone = (phone: string) => {
+    const normalized = phone.replace(/[\s\-()]/g, "")
+    return /^\+[1-9]\d{6,14}$/.test(normalized)
+  }
+
   useEffect(() => {
-    if (smsAlerts?.phone) {
+    if (smsAlerts?.phone && !smsPhoneEdited) {
       setSmsPhone(smsAlerts.phone)
     }
-  }, [smsAlerts?.phone])
+  }, [smsAlerts?.phone, smsPhoneEdited])
 
   const handleSignIn = async () => {
     setAuthError(null)
@@ -226,6 +232,7 @@ export function ProfileView() {
       })
       setSmsStatusMessage("Verification code sent. Enter the code to finish enabling SMS alerts.")
       setSmsCode("")
+      setSmsPhoneEdited(false)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to start SMS verification"
       setSmsError(message)
@@ -241,6 +248,7 @@ export function ProfileView() {
     try {
       await verifySmsCode(smsCode)
       setSmsStatusMessage("SMS alerts verified")
+      setSmsPhoneEdited(false)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Verification failed"
       setSmsError(message)
@@ -564,13 +572,20 @@ export function ProfileView() {
                 <input
                   type="tel"
                   value={smsPhone}
-                  onChange={(e) => setSmsPhone(e.target.value)}
+                  onChange={(e) => {
+                    setSmsPhoneEdited(true)
+                    setSmsPhone(e.target.value)
+                  }}
                   className="w-full p-3 rounded-lg bg-input border border-border text-sm"
                   placeholder="+1 (555) 555-1234"
                   disabled={!session || smsLoading}
                 />
                 <div className="flex flex-wrap gap-2 items-center">
-                  <Button onClick={handleBeginSms} disabled={!session || !smsPhone || smsLoading} size="sm">
+                  <Button
+                    onClick={handleBeginSms}
+                    disabled={!session || !smsPhone || !isValidPhone(smsPhone) || smsLoading}
+                    size="sm"
+                  >
                     {smsLoading ? "Sending..." : smsAlerts?.status === "pending" ? "Resend code" : "Verify number"}
                   </Button>
                   {smsAlerts?.status === "pending" && (

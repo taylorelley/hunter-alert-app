@@ -341,6 +341,12 @@ export async function upsertPushSubscription(
     metadata?: Record<string, unknown>;
   },
 ): Promise<PushSubscriptionRow> {
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!sessionData?.session) {
+    throw new Error('Cannot upsert push subscription without an active session')
+  }
+
   const { data, error } = await client
     .from('push_subscriptions')
     .upsert(
@@ -369,6 +375,12 @@ export async function togglePushSubscription(
   id: string,
   enabled: boolean,
 ): Promise<PushSubscriptionRow> {
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!sessionData?.session) {
+    throw new Error('Cannot toggle push subscription without an active session')
+  }
+
   const { data, error } = await client
     .from('push_subscriptions')
     .update({ enabled })
@@ -417,7 +429,13 @@ export async function updateSmsPreferences(
   const updatePayload: Partial<SmsAlertSubscriptionRow> = {};
   if (typeof payload.allow_checkins === 'boolean') updatePayload.allow_checkins = payload.allow_checkins;
   if (typeof payload.allow_sos === 'boolean') updatePayload.allow_sos = payload.allow_sos;
-  if (typeof payload.status === 'string') updatePayload.status = payload.status as SmsAlertSubscriptionRow['status'];
+  if (typeof payload.status === 'string') {
+    const validStatuses = ['pending', 'verified', 'disabled'] as const;
+    if (!validStatuses.includes(payload.status as (typeof validStatuses)[number])) {
+      throw new Error(`Invalid status value: ${payload.status}`);
+    }
+    updatePayload.status = payload.status as SmsAlertSubscriptionRow['status'];
+  }
   if (typeof payload.phone === 'string') updatePayload.phone = payload.phone;
 
   const { data: userResult, error: userError } = await client.auth.getUser();
@@ -441,17 +459,39 @@ export async function updateSmsPreferences(
 
 export async function dispatchSmsAlert(
   client: SupabaseClient,
-  payload: { type: 'checkin' | 'sos'; message: string; tripId?: string | null; checkInId?: string | null; location?: unknown },
+  payload: {
+    type: 'checkin' | 'sos';
+    message: string;
+    tripId?: string | null;
+    checkInId?: string | null;
+    location?: { latitude: number; longitude: number; accuracy?: number } | null;
+  },
 ): Promise<Record<string, unknown>> {
-  const { data, error } = await client.functions.invoke('dispatch-alerts', {
-    body: payload,
-  });
+  try {
+    const normalizedPayload = payload.location
+      ? {
+          ...payload,
+          location: {
+            lat: payload.location.latitude,
+            lng: payload.location.longitude,
+            accuracy: payload.location.accuracy,
+          },
+        }
+      : payload;
 
-  if (error) {
-    throw error;
+    const { data, error } = await client.functions.invoke('dispatch-alerts', {
+      body: normalizedPayload,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return (data ?? {}) as Record<string, unknown>;
+  } catch (err) {
+    console.error('dispatchSmsAlert failed:', err);
+    throw err;
   }
-
-  return (data ?? {}) as Record<string, unknown>;
 }
 
 export async function leaveGroup(client: SupabaseClient, groupId: string): Promise<boolean> {
