@@ -22,6 +22,16 @@ const redactPhone = (phone?: string) => {
   return `***${visible}`
 }
 
+const redactEmail = (email?: string) => {
+  if (!email) return undefined
+  const [local, domain] = email.split("@")
+  if (!domain) return "***"
+  const redactedLocal = local.length > 1 ? `${local[0]}***` : "***"
+  return `${redactedLocal}@${domain}`
+}
+
+const FETCH_TIMEOUT_MS = 10_000
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")
 
@@ -48,6 +58,9 @@ async function sendSms(contact: ContactPayload, body: string) {
     Body: body,
   })
 
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -56,11 +69,14 @@ async function sendSms(contact: ContactPayload, body: string) {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: params,
+      signal: controller.signal,
     })
 
+    clearTimeout(timeoutId)
     const text = await response.text()
     return { ok: response.ok, status: response.status, message: text }
   } catch (error) {
+    clearTimeout(timeoutId)
     console.error("SMS send failed", error)
     const message = error instanceof Error ? error.message : "Failed to send SMS"
     return { ok: false, status: 500, message }
@@ -72,6 +88,9 @@ async function sendEmail(contact: ContactPayload, subject: string, body: string)
     console.log("Postmark credentials missing; simulating email send")
     return { ok: true, status: 202, message: "Simulated email delivery" }
   }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
   try {
     const response = await fetch("https://api.postmarkapp.com/email", {
@@ -86,11 +105,14 @@ async function sendEmail(contact: ContactPayload, subject: string, body: string)
         Subject: subject,
         TextBody: body,
       }),
+      signal: controller.signal,
     })
 
+    clearTimeout(timeoutId)
     const text = await response.text()
     return { ok: response.ok, status: response.status, message: text }
   } catch (error) {
+    clearTimeout(timeoutId)
     console.error("Email send failed", error)
     const message = error instanceof Error ? error.message : "Failed to send email"
     return { ok: false, status: 500, message }
@@ -167,7 +189,13 @@ serve(async (req) => {
     JSON.stringify({
       deliveredVia,
       attempted: attempts,
-      contact: { name: contact.name, phone: contact.phone, email: contact.email },
+      contact: {
+        id: contact.id,
+        name: contact.name,
+        phone: redactPhone(contact.phone),
+        email: redactEmail(contact.email),
+        emailProvided: Boolean(contact.email),
+      },
       channel,
     }),
     {

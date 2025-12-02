@@ -21,6 +21,8 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const closeTimeoutRef = useRef<number | null>(null)
   const selectedContact = contacts.find((contact) => contact.id === contactId)
+  const contactPhone = selectedContact?.phone
+  const contactEmail = selectedContact?.email
 
   useEffect(() => {
     if (!isOpen) {
@@ -40,12 +42,24 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
 
   useEffect(() => {
     if (!selectedContact) return
-    if (channel === "sms" && !selectedContact.phone && selectedContact.email) {
+    if (channel === "sms" && !contactPhone && contactEmail) {
       setChannel("email")
-    } else if (channel === "email" && !selectedContact.email && selectedContact.phone) {
+    } else if (channel === "email" && !contactEmail && contactPhone) {
       setChannel("sms")
     }
-  }, [channel, selectedContact?.email, selectedContact?.phone])
+  }, [channel, contactEmail, contactPhone, selectedContact])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSending) {
+        onClose()
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, isSending, onClose])
 
   useEffect(() => {
     return () => {
