@@ -135,7 +135,7 @@ pnpm build
 Ensure these are set in your hosting platform:
 - `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anonymous key
-- `NEXT_PUBLIC_WEATHER_API_KEY` - OpenWeatherMap API key (optional, for weather features)
+- `NEXT_PUBLIC_WEATHER_API_KEY` - OpenWeatherMap API key (required for live weather)
 
 For local testing before deployment, set these in `.env.local` (see [Frontend development](#frontend-development) section).
 
