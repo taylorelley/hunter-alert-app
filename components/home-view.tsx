@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils"
 import { getCurrentPosition } from "@/lib/geolocation"
 import { Badge } from "@/components/ui/badge"
 import { useNetwork } from "@/components/network-provider"
+import { Input } from "@/components/ui/input"
 import {
   getCachedWeather,
   getWeatherByCoordinates,
@@ -44,6 +45,7 @@ interface HomeViewProps {
 export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: HomeViewProps) {
   const { currentTrip, nextCheckInDue, checkInStatus, isPremium, waypoints } = useApp()
   const { state: networkState } = useNetwork()
+  const { connectivity, constrained } = networkState
   const [timeRemaining, setTimeRemaining] = useState("")
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(true)
@@ -51,7 +53,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
   const [manualLocation, setManualLocation] = useState("")
   const [usingCachedWeather, setUsingCachedWeather] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const isOffline = networkState.connectivity === "offline"
+  const isOffline = connectivity === "offline"
 
   useEffect(() => {
     if (!nextCheckInDue) return
@@ -88,7 +90,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
         setWeatherLoading(true)
         setLocationError(null)
 
-        if (networkState.connectivity === "offline") {
+        if (connectivity === "offline") {
           const cached = await getCachedWeather()
           if (mounted && cached) {
             setWeather(cached)
@@ -102,7 +104,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
         if (!mounted) return
 
         const weatherData = await getWeatherByCoordinates(coords.latitude, coords.longitude, {
-          constrained: networkState.constrained || networkState.connectivity === "satellite",
+          constrained: constrained || connectivity === "satellite",
         })
         if (!mounted) return
         setWeather(weatherData)
@@ -130,7 +132,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
     return () => {
       mounted = false
     }
-  }, [networkState])
+  }, [connectivity, constrained])
 
   const handleManualWeather = async () => {
     if (!manualLocation.trim()) {
@@ -138,11 +140,16 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
       return
     }
 
+    if (isOffline) {
+      setLocationError("Cannot fetch weather while offline. Using cached data if available.")
+      return
+    }
+
     try {
       setWeatherLoading(true)
       setLocationError(null)
       const weatherData = await getWeatherByCity(manualLocation.trim(), {
-        constrained: networkState.constrained || networkState.connectivity === "satellite",
+        constrained: constrained || connectivity === "satellite",
       })
       setWeather(weatherData)
       setLastUpdated(new Date(weatherData.fetchedAt))
@@ -362,8 +369,8 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
             <div className="space-y-1 pt-2 border-t border-border">
               <label className="text-xs font-semibold text-muted-foreground">Manual location</label>
               <div className="flex gap-2">
-                <input
-                  className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none"
+                <Input
+                  className="flex-1"
                   placeholder="Enter city or waypoint"
                   value={manualLocation}
                   onChange={(e) => setManualLocation(e.target.value)}

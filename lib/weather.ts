@@ -34,20 +34,47 @@ interface CachedWeatherPayload {
   timestamp: number;
 }
 
-const API_KEY = process.env.NEXT_PUBLIC_WEATHER_API_KEY;
+const API_KEY = (process.env.NEXT_PUBLIC_WEATHER_API_KEY || "").trim();
 const BASE_URL = "https://api.openweathermap.org/data/2.5";
 const WEATHER_CACHE_KEY = "weather:last-success";
 const REQUEST_TIMEOUT_MS = 12000;
 const configuredBackoff = Number(process.env.SYNC_BASE_BACKOFF_MS ?? 4000);
 const BASE_BACKOFF_MS = Number.isFinite(configuredBackoff) ? Math.max(configuredBackoff, 1000) : 4000;
 
-function assertWeatherApiKey(): string {
-  if (!API_KEY) {
+function buildMockWeather(location: string): WeatherData {
+  const now = Date.now();
+  return {
+    temperature: 65,
+    temperatureCelsius: 18,
+    condition: "Clear",
+    description: "Offline sample weather",
+    icon: "01d",
+    humidity: 40,
+    windSpeed: 5,
+    windSpeedKmh: 8,
+    location,
+    fetchedAt: now,
+  };
+}
+
+async function resolveApiKeyOrFallback(location: string): Promise<{
+  apiKey: string | null;
+  fallback: WeatherData | null;
+}> {
+  if (API_KEY) return { apiKey: API_KEY, fallback: null };
+
+  if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "NEXT_PUBLIC_WEATHER_API_KEY is required for weather. Add it to your environment (OpenWeatherMap API key).",
+      "NEXT_PUBLIC_WEATHER_API_KEY is required for live weather in production. Add it to your environment (OpenWeatherMap API key).",
     );
   }
-  return API_KEY;
+
+  const cached = await readCachedWeather();
+  if (cached) return { apiKey: null, fallback: cached };
+
+  const mock = buildMockWeather(location);
+  await cacheWeather(mock);
+  return { apiKey: null, fallback: mock };
 }
 
 function delay(ms: number) {
@@ -78,6 +105,7 @@ async function fetchWithBackoff(url: string, { constrained }: WeatherRequestOpti
     }
   }
 
+  // TypeScript: unreachable, but satisfies return type in case control flow analysis changes
   throw new Error("Weather request failed after retries");
 }
 
@@ -127,10 +155,14 @@ export async function getWeatherByCoordinates(
   longitude: number,
   options: WeatherRequestOptions = {},
 ): Promise<WeatherData> {
-  assertWeatherApiKey();
+  const { apiKey, fallback } = await resolveApiKeyOrFallback("Current location");
+  if (!apiKey) {
+    if (fallback) return fallback;
+    throw new Error("Weather unavailable: missing API key");
+  }
 
   try {
-    const url = `${BASE_URL}/weather?lat=${latitude}&lon=${longitude}&appid=${API_KEY}&units=imperial`;
+    const url = `${BASE_URL}/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}&units=imperial`;
     const response = await fetchWithBackoff(url, options);
     const data = await response.json();
 
@@ -165,10 +197,14 @@ export async function getWeatherByCoordinates(
  * Fetch current weather by city name
  */
 export async function getWeatherByCity(city: string, options: WeatherRequestOptions = {}): Promise<WeatherData> {
-  assertWeatherApiKey();
+  const { apiKey, fallback } = await resolveApiKeyOrFallback(city);
+  if (!apiKey) {
+    if (fallback) return fallback;
+    throw new Error("Weather unavailable: missing API key");
+  }
 
   try {
-    const url = `${BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=imperial`;
+    const url = `${BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${apiKey}&units=imperial`;
     const response = await fetchWithBackoff(url, options);
     const data = await response.json();
 

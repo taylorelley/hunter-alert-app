@@ -1,8 +1,17 @@
-export const REQUIRED_ENV_VARS = [
+const BASE_REQUIRED_ENV_VARS = [
   { key: "NEXT_PUBLIC_SUPABASE_URL", description: "Supabase project URL" },
   { key: "NEXT_PUBLIC_SUPABASE_ANON_KEY", description: "Supabase anon public key" },
-  { key: "NEXT_PUBLIC_WEATHER_API_KEY", description: "OpenWeatherMap API key for live weather" },
 ];
+
+const WEATHER_API_REQUIREMENT = {
+  key: "NEXT_PUBLIC_WEATHER_API_KEY",
+  description: "OpenWeatherMap API key for live weather",
+};
+
+export const REQUIRED_ENV_VARS =
+  process.env.NODE_ENV === "production"
+    ? [...BASE_REQUIRED_ENV_VARS, WEATHER_API_REQUIREMENT]
+    : BASE_REQUIRED_ENV_VARS;
 
 export const CONSTRAINED_ENV_LIMITS = [
   {
