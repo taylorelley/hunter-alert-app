@@ -61,16 +61,17 @@ begin
       j.conversation_id,
       last_checkin.last_checkin_at,
       last_checkin.last_checkin_at
-        + make_interval(
-            hours => greatest(
-              case
-                when j.is_premium then j.trip_cadence
-                else greatest(j.trip_cadence, free_min_cadence)
-              end,
-              0
-            )
-          ) as next_allowed_at
+        + make_interval(hours => cadence_hours.cadence_hours) as next_allowed_at
     from joined j
+    cross join lateral (
+      select greatest(
+          case
+            when j.is_premium then j.trip_cadence
+            else greatest(j.trip_cadence, free_min_cadence)
+          end,
+          0
+        ) as cadence_hours
+    ) as cadence_hours
     left join lateral (
       select max(m.created_at) as last_checkin_at
       from messages m
@@ -81,18 +82,7 @@ begin
     where j.checkin_status in ('ok', 'need-help')
       and j.trip_status = 'active'
       and last_checkin.last_checkin_at is not null
-      and now() < (
-        last_checkin.last_checkin_at
-          + make_interval(
-              hours => greatest(
-                case
-                  when j.is_premium then j.trip_cadence
-                  else greatest(j.trip_cadence, free_min_cadence)
-                end,
-                0
-              )
-            )
-      )
+      and now() < last_checkin.last_checkin_at + make_interval(hours => cadence_hours.cadence_hours)
   )
   select min(next_allowed_at) into next_allowed from violations;
 

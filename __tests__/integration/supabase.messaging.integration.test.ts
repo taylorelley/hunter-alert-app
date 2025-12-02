@@ -41,7 +41,12 @@ describeIfEnabled('supabase messaging integration', () => {
       .insert({
         participant_ids: [userId],
         title: 'Field Operations',
-        metadata: { region: 'integration' },
+        metadata: {
+          region: 'integration',
+          checkInCadence: 4,
+          status: 'active',
+          destination: 'Field Operations',
+        },
       })
       .select()
       .single();
@@ -51,13 +56,6 @@ describeIfEnabled('supabase messaging integration', () => {
     }
 
     conversationId = conversation.id;
-
-    await adminClient
-      .from('conversations')
-      .update({
-        metadata: { ...conversation.metadata, checkInCadence: 4, status: 'active', destination: 'Field Operations' },
-      })
-      .eq('id', conversationId);
 
     await adminClient
       .from('sync_cursors')
