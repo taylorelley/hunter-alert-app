@@ -78,6 +78,7 @@ export function AddWaypointModal({ isOpen, onClose }: AddWaypointModalProps) {
       coordinates,
       notes: notes.trim(),
       isPrivate,
+      groupId: !isPrivate ? shareToGroup : null,
     })
 
     setIsComplete(true)

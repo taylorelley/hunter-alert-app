@@ -108,6 +108,7 @@ export interface Waypoint {
   type: "camp" | "vehicle" | "hazard" | "custom" | "water" | "viewpoint"
   coordinates: { lat: number; lng: number }
   notes: string
+  groupId: string | null
   isPrivate: boolean
   createdAt: Date
 }
@@ -1527,6 +1528,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           description: waypoint.notes,
           tripId: state.currentTrip?.id,
           shared: allowSharing ? !waypoint.isPrivate : false,
+          groupId: allowSharing && !waypoint.isPrivate ? waypoint.groupId ?? null : null,
         })
 
         // Optimistically update local state
@@ -1848,6 +1850,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           type: wp.waypoint_type as Waypoint["type"],
           coordinates: { lat: wp.latitude, lng: wp.longitude },
           notes: wp.description || "",
+          groupId: wp.group_id ?? null,
           isPrivate: !wp.shared,
           createdAt: new Date(wp.created_at),
         }
