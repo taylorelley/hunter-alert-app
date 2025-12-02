@@ -884,7 +884,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
 
     setBackendPushSubscriptions((prev) => mergeRecords(prev, [record]))
-  }, [deviceSessionId, session, supabase])
+  }, [deviceSessionId, network.connectivity, session, supabase])
 
   const togglePushSubscriptionSetting = useCallback(
     async (id: string, enabled: boolean) => {
