@@ -37,7 +37,6 @@ for update using (user_id = auth.uid())
 create policy push_subscriptions_delete on push_subscriptions
 for delete using (user_id = auth.uid());
 
--- SMS alert opt-in with verification and per-channel preferences
 create table if not exists sms_alert_subscriptions (
   user_id uuid primary key references auth.users (id) on delete cascade,
   phone text not null,
@@ -51,6 +50,8 @@ create table if not exists sms_alert_subscriptions (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+comment on table sms_alert_subscriptions is 'Per-user SMS alert subscription status with phone verification, opt-in controls for check-ins and SOS alerts, and dispatch tracking.';
 
 create trigger set_sms_alert_subscriptions_updated_at
 before update on sms_alert_subscriptions
@@ -376,7 +377,7 @@ begin
         where user_id = auth.uid()
           and (since is null or updated_at > since)
         order by updated_at asc
-        limit 1
+        limit max_rows
       ) as sms
     )
   );

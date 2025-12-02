@@ -872,6 +872,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const registerPushSubscription = useCallback(async () => {
     if (!session) throw new Error("Sign-in required to enable push notifications")
+    if (network.connectivity === "offline") {
+      throw new Error("Connect to the network to enable push notifications")
+    }
     const registration = await requestPushRegistration()
     const record = await upsertPushSubscription(supabase, {
       token: registration.token,
@@ -886,33 +889,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const togglePushSubscriptionSetting = useCallback(
     async (id: string, enabled: boolean) => {
       if (!session) throw new Error("Sign-in required to update push notifications")
+      if (network.connectivity === "offline") {
+        throw new Error("Connect to the network to update push notifications")
+      }
       const record = await togglePushSubscription(supabase, id, enabled)
       setBackendPushSubscriptions((prev) => mergeRecords(prev, [record]))
     },
-    [session, supabase],
+    [network.connectivity, session, supabase],
   )
 
   const beginSmsOptIn = useCallback(
     async ({ phone, allowCheckIns, allowSOS }: { phone: string; allowCheckIns?: boolean; allowSOS?: boolean }) => {
       if (!session) throw new Error("Sign-in required to enable SMS alerts")
+      if (network.connectivity === "offline") {
+        throw new Error("Connect to the network to start SMS verification")
+      }
       const record = await beginSmsVerification(supabase, { phone, allowCheckIns, allowSos: allowSOS })
       setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
     },
-    [session, supabase],
+    [network.connectivity, session, supabase],
   )
 
   const verifySmsCode = useCallback(
     async (code: string) => {
       if (!session) throw new Error("Sign-in required to verify SMS alerts")
+      if (network.connectivity === "offline") {
+        throw new Error("Connect to the network to verify SMS alerts")
+      }
       const record = await confirmSmsVerification(supabase, code)
       setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
     },
-    [session, supabase],
+    [network.connectivity, session, supabase],
   )
 
   const updateSmsPreferences = useCallback(
     async (changes: Partial<{ allowCheckIns: boolean; allowSOS: boolean; status: SmsAlertPreferences["status"] }>) => {
       if (!session) throw new Error("Sign-in required to update SMS alerts")
+      if (network.connectivity === "offline") {
+        throw new Error("Connect to the network to update SMS alerts")
+      }
       const record = await apiUpdateSmsPreferences(supabase, {
         allow_checkins: changes.allowCheckIns,
         allow_sos: changes.allowSOS,
@@ -920,7 +935,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
       setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
     },
-    [session, supabase],
+    [network.connectivity, session, supabase],
   )
 
   const persistEntitlement = useCallback(

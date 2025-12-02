@@ -89,8 +89,10 @@ export function ProfileView() {
   const [smsPhoneEdited, setSmsPhoneEdited] = useState(false)
   const showAdminDebug = process.env.NEXT_PUBLIC_ENABLE_ADMIN_DEBUG === "true"
 
+  const normalizePhone = (phone: string) => phone.replace(/[\s\-()]/g, "")
+
   const isValidPhone = (phone: string) => {
-    const normalized = phone.replace(/[\s\-()]/g, "")
+    const normalized = normalizePhone(phone)
     return /^\+[1-9]\d{6,14}$/.test(normalized)
   }
 
@@ -197,6 +199,10 @@ export function ProfileView() {
   const handleRegisterPush = async () => {
     setPushError(null)
     setPushStatus(null)
+    if (network.connectivity === "offline") {
+      setPushError("Connect to the network to register this device for push alerts")
+      return
+    }
     setPushLoading(true)
     try {
       await registerPushSubscription()
@@ -223,10 +229,15 @@ export function ProfileView() {
   const handleBeginSms = async () => {
     setSmsError(null)
     setSmsStatusMessage(null)
+    if (network.connectivity === "offline") {
+      setSmsError("Connect to the network to start SMS verification")
+      return
+    }
     setSmsLoading(true)
     try {
+      const normalizedPhone = normalizePhone(smsPhone)
       await beginSmsOptIn({
-        phone: smsPhone,
+        phone: normalizedPhone,
         allowCheckIns: smsAlerts?.allowCheckIns ?? true,
         allowSOS: smsAlerts?.allowSOS ?? true,
       })
@@ -244,6 +255,10 @@ export function ProfileView() {
   const handleVerifySms = async () => {
     setSmsError(null)
     setSmsStatusMessage(null)
+    if (network.connectivity === "offline") {
+      setSmsError("Connect to the network to verify SMS alerts")
+      return
+    }
     setSmsLoading(true)
     try {
       await verifySmsCode(smsCode)
@@ -259,6 +274,10 @@ export function ProfileView() {
 
   const handleSmsPreferenceChange = async (changes: Partial<{ allowCheckIns: boolean; allowSOS: boolean; status: string }>) => {
     setSmsError(null)
+    if (network.connectivity === "offline") {
+      setSmsError("Connect to the network to update SMS alert preferences")
+      return
+    }
     if (!smsAlerts) {
       setSmsError("Start verification first to manage SMS alerts")
       return

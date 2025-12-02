@@ -402,6 +402,12 @@ export async function beginSmsVerification(
   client: SupabaseClient,
   payload: { phone: string; allowCheckIns?: boolean; allowSos?: boolean },
 ): Promise<SmsAlertSubscriptionRow> {
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!sessionData?.session) {
+    throw new Error('Authentication required to begin SMS verification');
+  }
+
   const { data, error } = await client.rpc('begin_sms_verification', {
     phone: payload.phone,
     allow_checkins: payload.allowCheckIns ?? true,
@@ -416,6 +422,12 @@ export async function beginSmsVerification(
 }
 
 export async function confirmSmsVerification(client: SupabaseClient, code: string): Promise<SmsAlertSubscriptionRow> {
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!sessionData?.session) {
+    throw new Error('Authentication required to confirm SMS verification');
+  }
+
   const { data, error } = await client.rpc('confirm_sms_verification', { code });
 
   if (error) {
@@ -470,6 +482,12 @@ export async function dispatchSmsAlert(
     location?: { latitude: number; longitude: number; accuracy?: number } | null;
   },
 ): Promise<Record<string, unknown>> {
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!sessionData?.session) {
+    throw new Error('Authentication required to dispatch SMS alerts');
+  }
+
   try {
     const normalizedPayload = payload.location
       ? {
