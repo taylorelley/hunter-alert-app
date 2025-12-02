@@ -20,3 +20,6 @@ verify_jwt = true
 
 [functions.pull_updates]
 verify_jwt = true
+
+[functions.send-test-notification]
+verify_jwt = true
