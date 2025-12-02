@@ -63,14 +63,14 @@ Returns recent changes for the authenticated user in a single JSON payload.
 ## RPC: `resend_group_invitation(invitation_id uuid)`
 Marks a pending invitation as resent by updating its metadata. Only the original sender can resend.
 
-**Request payload**
+### Request payload
 ```json
 {
   "invitation_id": "uuid"
 }
 ```
 
-**Behavior**
+### Behavior
 - Validates the caller is authenticated and the invitation exists.
 - Verifies `auth.uid()` matches `sender_id` before updating `metadata.resent_at`.
 - Rejects non-pending invitations with a descriptive error.
@@ -79,14 +79,14 @@ Marks a pending invitation as resent by updating its metadata. Only the original
 ## RPC: `withdraw_group_invitation(invitation_id uuid)`
 Allows an invitation sender to withdraw a pending invite.
 
-**Request payload**
+### Request payload
 ```json
 {
   "invitation_id": "uuid"
 }
 ```
 
-**Behavior**
+### Behavior
 - Requires authentication and that the caller is the original sender.
 - Rejects non-pending invitations with a descriptive error.
 - Sets `status` to `declined` and merges `metadata.withdrawn_by_sender: true`.
@@ -95,7 +95,7 @@ Allows an invitation sender to withdraw a pending invite.
 ## RPC: `update_geofence(...)`
 Updates a geofence owned by the authenticated user and records group activity when applicable.
 
-**Request payload**
+### Request payload
 ```json
 {
   "geofence_id": "uuid",
@@ -107,11 +107,31 @@ Updates a geofence owned by the authenticated user and records group activity wh
 }
 ```
 
-**Behavior**
+### Behavior
 - Ensures the caller owns the geofence via `user_id` check.
 - Updates the name, description, coordinates, and radius in one transaction.
 - When linked to a group, appends a `geofence` entry to `group_activity` for auditability.
 - Returns the updated `geofences` row.
+
+## RPC: `delete_geofence(geofence_id uuid)`
+Deletes a geofence owned by the authenticated user and records group activity when applicable.
+
+### Request payload
+```json
+{
+  "geofence_id": "uuid"
+}
+```
+
+### Behavior
+- Verifies the caller owns the geofence via `user_id` before deletion.
+- Executes the removal inside a transaction and deletes the geofence row.
+- When linked to a group, appends a `geofence` entry to `group_activity` for auditability.
+
+### Response
+- Returns the deleted `geofences` row (or a confirmation object) on success.
+- Returns `404` if the geofence is not found.
+- Returns `403` if the caller is not the owner.
 
 ## Error handling
 - Requests without a valid JWT fail with `Authentication is required`.
