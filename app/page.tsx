@@ -17,7 +17,7 @@ import { PlanTripModal } from "@/components/modals/plan-trip-modal"
 import { AuthView } from "@/components/auth-view"
 import { useApp } from "@/components/app-provider"
 
-function HunterAlertApp() {
+function HunterAlertApp(): JSX.Element {
   const [activeTab, setActiveTab] = useState("home")
   const [showCheckIn, setShowCheckIn] = useState(false)
   const [showSOS, setShowSOS] = useState(false)
@@ -76,7 +76,7 @@ function HunterAlertApp() {
   )
 }
 
-function AppContent() {
+function AppContent(): JSX.Element {
   const { session } = useApp()
 
   if (!session) {
@@ -86,7 +86,7 @@ function AppContent() {
   return <HunterAlertApp />
 }
 
-export default function Page() {
+export default function Page(): JSX.Element {
   return (
     <NetworkProvider>
       <AppProvider>

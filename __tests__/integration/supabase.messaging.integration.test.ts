@@ -53,6 +53,13 @@ describeIfEnabled('supabase messaging integration', () => {
     conversationId = conversation.id;
 
     await adminClient
+      .from('conversations')
+      .update({
+        metadata: { ...conversation.metadata, checkInCadence: 4, status: 'active', destination: 'Field Operations' },
+      })
+      .eq('id', conversationId);
+
+    await adminClient
       .from('sync_cursors')
       .upsert({
         user_id: userId,
@@ -98,6 +105,27 @@ describeIfEnabled('supabase messaging integration', () => {
     },
     TEST_TIMEOUT,
   );
+
+  it('rejects rapid consecutive check-ins for free users', async () => {
+    const firstCheckIn = {
+      conversation_id: conversationId,
+      body: 'Check-in',
+      metadata: { status: 'ok', batteryLevel: 80 },
+      client_id: 'checkin-1',
+      created_at: new Date().toISOString(),
+    };
+
+    const initialResult = await sendBatch(userClient, [firstCheckIn], 5);
+    expect(initialResult.data?.length).toBe(1);
+
+    const rapidAttempt = {
+      ...firstCheckIn,
+      client_id: 'checkin-2',
+      created_at: new Date().toISOString(),
+    };
+
+    await expect(sendBatch(userClient, [rapidAttempt], 5)).rejects.toThrow(/cadence/i);
+  });
 
   it(
     'rejects oversized batches client-side and preserves queued work for replay',

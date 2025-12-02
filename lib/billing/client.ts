@@ -200,7 +200,15 @@ export async function purchasePackage(
   userId?: string,
 ): Promise<BillingResult> {
   const purchases = await loadPurchases(userId)
-  if (purchases?.purchasePackage) {
+  if (!purchases?.purchasePackage) {
+    console.warn("Purchases client unavailable; skipping purchase attempt")
+    return {
+      entitlementActive: false,
+      productId: packageId,
+    }
+  }
+
+  try {
     const result = (await purchases.purchasePackage({
       packageIdentifier: packageId,
       offeringIdentifier: offeringId || appConfig.billing.offeringId,
@@ -217,40 +225,55 @@ export async function purchasePackage(
       transactionIdentifier: result.transactionIdentifier,
       raw: result,
     }
-  }
-
-  return {
-    entitlementActive: true,
-    receipt: `web-${Date.now()}`,
-    productId: packageId,
+  } catch (error) {
+    console.error("Failed to purchase package", error)
+    return {
+      entitlementActive: false,
+      productId: packageId,
+    }
   }
 }
 
 export async function restorePurchases(userId?: string): Promise<BillingResult> {
   const purchases = await loadPurchases(userId)
-  if (purchases?.restorePurchases) {
+  if (!purchases?.restorePurchases) {
+    console.warn("Purchases client unavailable; cannot restore purchases")
+    return {
+      entitlementActive: false,
+    }
+  }
+
+  try {
     const info = (await purchases.restorePurchases()) as CustomerInfoLike
     return {
       entitlementActive: resolveEntitlementActive(info, appConfig.billing.entitlementId),
       receipt: normalizeReceipt(info),
       raw: info,
     }
-  }
-
-  return {
-    entitlementActive: false,
+  } catch (error) {
+    console.error("Failed to restore purchases", error)
+    return {
+      entitlementActive: false,
+    }
   }
 }
 
 export async function getCustomerInfo(userId?: string): Promise<BillingResult | null> {
   const purchases = await loadPurchases(userId)
-  if (purchases?.getCustomerInfo) {
+  if (!purchases?.getCustomerInfo) {
+    console.warn("Purchases client unavailable; cannot load customer info")
+    return { entitlementActive: false }
+  }
+
+  try {
     const info = (await purchases.getCustomerInfo()) as CustomerInfoLike
     return {
       entitlementActive: resolveEntitlementActive(info, appConfig.billing.entitlementId),
       receipt: normalizeReceipt(info),
       raw: info,
     }
+  } catch (error) {
+    console.error("Failed to fetch customer info", error)
+    return { entitlementActive: false }
   }
-  return null
 }

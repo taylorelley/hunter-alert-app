@@ -4,10 +4,8 @@ import { useEffect, useState } from "react"
 import { X, MapPin, Clock, Users, FileText, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Trip, useApp } from "../app-provider"
+import { Trip, useApp, FREE_MIN_CHECKIN_CADENCE_HOURS } from "../app-provider"
 import { cn } from "@/lib/utils"
-
-const MIN_FREE_CADENCE_HOURS = 6
 
 interface PlanTripModalProps {
   isOpen: boolean
@@ -28,7 +26,9 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
   const [destination, setDestination] = useState("")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
-  const [checkInCadence, setCheckInCadence] = useState(4)
+  const [checkInCadence, setCheckInCadence] = useState(
+    isPremium ? 4 : FREE_MIN_CHECKIN_CADENCE_HOURS,
+  )
   const [selectedContacts, setSelectedContacts] = useState<string[]>([])
   const [notes, setNotes] = useState("")
   const [isComplete, setIsComplete] = useState(false)
@@ -50,14 +50,14 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
       setDestination("")
       setStartDate("")
       setEndDate("")
-      setCheckInCadence(4)
+      setCheckInCadence(isPremium ? 4 : FREE_MIN_CHECKIN_CADENCE_HOURS)
       setSelectedContacts(emergencyContacts.map((c) => c.name))
       setNotes("")
     }
     setStep(1)
     setIsComplete(false)
     setError(null)
-  }, [emergencyContacts, isOpen, trip])
+  }, [emergencyContacts, isOpen, isPremium, trip])
 
   if (!isOpen) return null
 
@@ -107,7 +107,7 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
         setDestination("")
         setStartDate("")
         setEndDate("")
-        setCheckInCadence(4)
+        setCheckInCadence(isPremium ? 4 : FREE_MIN_CHECKIN_CADENCE_HOURS)
         setSelectedContacts([])
         setNotes("")
         onClose()
@@ -249,7 +249,7 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
 
                   <div className="grid grid-cols-2 gap-3">
                     {[2, 4, 6, 8, 12, 24].map((hours) => {
-                      const locked = !isPremium && hours < MIN_FREE_CADENCE_HOURS
+                      const locked = !isPremium && hours < FREE_MIN_CHECKIN_CADENCE_HOURS
                       return (
                         <button
                           key={hours}
@@ -282,7 +282,7 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
 
                   {!isPremium && (
                     <p className="text-xs text-muted-foreground">
-                      Faster than every {MIN_FREE_CADENCE_HOURS} hours is part of Pro. Upgrade in billing settings to
+                      Faster than every {FREE_MIN_CHECKIN_CADENCE_HOURS} hours is part of Pro. Upgrade in billing settings to
                       enable tighter check-in cadences.
                     </p>
                   )}
