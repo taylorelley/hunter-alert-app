@@ -25,6 +25,12 @@ import {
   updateEmergencyContacts as apiUpdateEmergencyContacts,
   sendTestNotification as apiSendTestNotification,
   upsertPrivacySettings as apiUpsertPrivacySettings,
+  upsertPushSubscription,
+  togglePushSubscription,
+  beginSmsVerification,
+  confirmSmsVerification,
+  updateSmsPreferences as apiUpdateSmsPreferences,
+  dispatchSmsAlert,
 } from "@/lib/supabase/api"
 import { useNetwork } from "./network-provider"
 import { useSyncEngine } from "@/lib/sync/use-sync-engine"
@@ -41,10 +47,13 @@ import {
   MessageDraft,
   DeviceSession,
   PrivacySettingsRow,
+  PushSubscriptionRow,
+  SmsAlertSubscriptionRow,
 } from "@/lib/supabase/types"
 import { Device } from "@capacitor/device"
 import { persistCachedDeviceSessions, readCachedDeviceSessions } from "@/lib/storage/device-sessions"
 import { getClientSessionId } from "@/lib/device/session-id"
+import { requestPushRegistration } from "@/lib/push/registration"
 
 export const FREE_MIN_CHECKIN_CADENCE_HOURS = 6
 const FREE_HISTORY_DAYS = 14
@@ -118,6 +127,27 @@ export interface PrivacySettings {
   shareTrips: boolean
   shareWaypoints: boolean
   notifyContacts: boolean
+}
+
+export interface PushSubscription {
+  id: string
+  token: string
+  platform: string
+  environment: "production" | "development" | "unknown"
+  deviceSessionId: string | null
+  enabled: boolean
+  lastDeliveredAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface SmsAlertPreferences {
+  phone: string
+  status: "pending" | "verified" | "disabled"
+  allowCheckIns: boolean
+  allowSOS: boolean
+  verificationExpiresAt: Date | null
+  lastDispatchedAt: Date | null
 }
 
 const DEFAULT_PRIVACY_SETTINGS: PrivacySettings = {
@@ -224,6 +254,8 @@ interface AppState {
   userName: string
   emergencyContacts: EmergencyContact[]
   privacySettings: PrivacySettings
+  pushSubscriptions: PushSubscription[]
+  smsAlerts: SmsAlertPreferences | null
 }
 
 interface AppContextValue extends AppState {
@@ -243,6 +275,11 @@ interface AppContextValue extends AppState {
   deleteEmergencyContact: (id: string) => Promise<void>
   sendTestContactNotification: (options: { contactId: string; channel?: "sms" | "email" }) => Promise<void>
   updatePrivacySettings: (settings: Partial<PrivacySettings>) => Promise<void>
+  registerPushSubscription: () => Promise<void>
+  togglePushSubscription: (id: string, enabled: boolean) => Promise<void>
+  beginSmsOptIn: (params: { phone: string; allowCheckIns?: boolean; allowSOS?: boolean }) => Promise<void>
+  verifySmsCode: (code: string) => Promise<void>
+  updateSmsPreferences: (changes: Partial<{ allowCheckIns: boolean; allowSOS: boolean; status: SmsAlertPreferences["status"] }>) => Promise<void>
   signUp: (params: { email: string; password: string; displayName?: string }) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
@@ -505,6 +542,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [backendPrivacySettings, setBackendPrivacySettings] = useState<
     (PrivacySettingsRow & { id: string })[]
   >([])
+  const [backendPushSubscriptions, setBackendPushSubscriptions] = useState<PushSubscriptionRow[]>([])
+  const [backendSmsAlerts, setBackendSmsAlerts] = useState<(SmsAlertSubscriptionRow & { id: string })[]>([])
   const [syncCursor, setSyncCursor] = useState<string | null>(null)
   const [billingOfferings, setBillingOfferings] = useState<BillingOffering[]>([])
   const [billingReceipt, setBillingReceipt] = useState<string | null>(null)
@@ -534,6 +573,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     userName: "Guest",
     emergencyContacts: [],
     privacySettings: DEFAULT_PRIVACY_SETTINGS,
+    pushSubscriptions: [],
+    smsAlerts: null,
   })
 
   useEffect(() => {
@@ -695,6 +736,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBackendGeofences([])
     setBackendProfiles([])
     setBackendDeviceSessions([])
+    setBackendPushSubscriptions([])
+    setBackendSmsAlerts([])
     persistCachedDeviceSessions([])
     revocationCheckRef.current = false
     setState({
@@ -718,6 +761,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       userName: "Guest",
       emergencyContacts: [],
       privacySettings: DEFAULT_PRIVACY_SETTINGS,
+      pushSubscriptions: [],
+      smsAlerts: null,
     })
   }, [network.connectivity, supabase])
 
@@ -825,6 +870,99 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [backendPrivacySettings, session?.user?.id, supabase],
   )
 
+  const registerPushSubscription = useCallback(async () => {
+    if (!session) throw new Error("Sign-in required to enable push notifications")
+    if (network.connectivity === "offline") {
+      throw new Error("Connect to the network to enable push notifications")
+    }
+    try {
+      const registration = await requestPushRegistration()
+      const record = await upsertPushSubscription(supabase, {
+        token: registration.token,
+        deviceSessionId,
+        platform: registration.platform,
+        environment: registration.environment,
+      })
+
+      setBackendPushSubscriptions((prev) => mergeRecords(prev, [record]))
+    } catch (error) {
+      console.error("Failed to register push subscription:", error)
+      throw new Error("Unable to enable push notifications. Please try again.")
+    }
+  }, [deviceSessionId, network.connectivity, session, supabase])
+
+  const togglePushSubscriptionSetting = useCallback(
+    async (id: string, enabled: boolean) => {
+      if (!session) throw new Error("Sign-in required to update push notifications")
+      if (network.connectivity === "offline") {
+        throw new Error("Connect to the network to update push notifications")
+      }
+      try {
+        const record = await togglePushSubscription(supabase, id, enabled)
+        setBackendPushSubscriptions((prev) => mergeRecords(prev, [record]))
+      } catch (error) {
+        console.error("Failed to update push subscription:", error)
+        throw new Error("Unable to update push notifications. Please try again.")
+      }
+    },
+    [network.connectivity, session, supabase],
+  )
+
+  const beginSmsOptIn = useCallback(
+    async ({ phone, allowCheckIns, allowSOS }: { phone: string; allowCheckIns?: boolean; allowSOS?: boolean }) => {
+      if (!session) throw new Error("Sign-in required to enable SMS alerts")
+      if (network.connectivity === "offline") {
+        throw new Error("Connect to the network to start SMS verification")
+      }
+      try {
+        const record = await beginSmsVerification(supabase, { phone, allowCheckIns, allowSos: allowSOS })
+        setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
+      } catch (error) {
+        console.error("Failed to start SMS verification:", error)
+        throw new Error("Unable to start SMS verification. Please try again.")
+      }
+    },
+    [network.connectivity, session, supabase],
+  )
+
+  const verifySmsCode = useCallback(
+    async (code: string) => {
+      if (!session) throw new Error("Sign-in required to verify SMS alerts")
+      if (network.connectivity === "offline") {
+        throw new Error("Connect to the network to verify SMS alerts")
+      }
+      try {
+        const record = await confirmSmsVerification(supabase, code)
+        setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
+      } catch (error) {
+        console.error("Failed to verify SMS code:", error)
+        throw new Error("Unable to verify SMS alerts. Please try again.")
+      }
+    },
+    [network.connectivity, session, supabase],
+  )
+
+  const updateSmsPreferences = useCallback(
+    async (changes: Partial<{ allowCheckIns: boolean; allowSOS: boolean; status: SmsAlertPreferences["status"] }>) => {
+      if (!session) throw new Error("Sign-in required to update SMS alerts")
+      if (network.connectivity === "offline") {
+        throw new Error("Connect to the network to update SMS alerts")
+      }
+      try {
+        const record = await apiUpdateSmsPreferences(supabase, {
+          allow_checkins: changes.allowCheckIns,
+          allow_sos: changes.allowSOS,
+          status: changes.status,
+        })
+        setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
+      } catch (error) {
+        console.error("Failed to update SMS preferences:", error)
+        throw new Error("Unable to update SMS alerts. Please try again.")
+      }
+    },
+    [network.connectivity, session, supabase],
+  )
+
   const persistEntitlement = useCallback(
     async (active: boolean, receipt?: string | null) => {
       const previousIsPremium = state.isPremium
@@ -885,6 +1023,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBackendWaypoints((prev) => mergeRecords(prev, result.waypoints ?? []))
       setBackendGeofences((prev) => mergeRecords(prev, result.geofences ?? []))
       setBackendDeviceSessions((prev) => mergeRecords(prev, result.device_sessions ?? []))
+      setBackendPushSubscriptions((prev) => mergeRecords(prev, result.push_subscriptions ?? []))
+
+      if (result.sms_alert_subscriptions && result.sms_alert_subscriptions.length > 0) {
+        const withIds = result.sms_alert_subscriptions.map((entry) => ({ ...entry, id: entry.user_id }))
+        setBackendSmsAlerts((prev) => mergeRecords(prev, withIds))
+      }
 
       if (result.privacy_settings && result.privacy_settings.length > 0) {
         const withIds = result.privacy_settings.map((entry) => ({ ...entry, id: entry.user_id }))
@@ -1352,8 +1496,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
           pending: true,
         },
       ])
+
+      if (
+        state.smsAlerts?.status === "verified" &&
+        state.smsAlerts.allowCheckIns &&
+        network.connectivity !== "offline"
+      ) {
+        dispatchSmsAlert(supabase, {
+          type: "checkin",
+          message: payload.body,
+          tripId: state.currentTrip.id,
+          checkInId: actionId,
+        }).catch((error) => console.warn("SMS dispatch failed", error))
+      }
     },
-    [enqueue, session, state.currentTrip, state.isPremium],
+    [enqueue, network.connectivity, session, state.currentTrip, state.isPremium, state.smsAlerts, supabase],
   )
 
   const addWaypoint = useCallback(
@@ -1638,8 +1795,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
               : "resolved",
         lastSOSLocation: location ?? prev.lastSOSLocation,
       }))
+
+      if (
+        state.smsAlerts?.status === "verified" &&
+        state.smsAlerts.allowSOS &&
+        network.connectivity !== "offline"
+      ) {
+        dispatchSmsAlert(supabase, {
+          type: "sos",
+          message: payload.body,
+          tripId: state.currentTrip?.id,
+          checkInId: actionId,
+          location: payload.metadata?.location,
+        }).catch((error) => console.warn("SMS SOS dispatch failed", error))
+      }
     },
-    [buildSOSPayload, enqueue, network.connectivity, session],
+    [
+      buildSOSPayload,
+      enqueue,
+      network.connectivity,
+      session,
+      state.currentTrip?.id,
+      state.smsAlerts,
+      supabase,
+    ],
   )
 
   const triggerSOS = useCallback((silent: boolean) => dispatchSOS("active", silent), [dispatchSOS])
@@ -1779,6 +1958,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const deviceSessionViews = mapDeviceSessionsToView(backendDeviceSessions, deviceSessionId)
     const currentDevice = deviceSessionViews.find((entry) => entry.isCurrent) ?? null
 
+    const pushSubscriptions: PushSubscription[] = backendPushSubscriptions.map((entry) => ({
+      id: entry.id,
+      token: entry.token,
+      platform: entry.platform || "unknown",
+      environment:
+        entry.environment === "development" || entry.environment === "production"
+          ? entry.environment
+          : "unknown",
+      deviceSessionId: entry.device_session_id,
+      enabled: entry.enabled !== false,
+      lastDeliveredAt: entry.last_delivered_at ? new Date(entry.last_delivered_at) : null,
+      createdAt: new Date(entry.created_at),
+      updatedAt: new Date(entry.updated_at),
+    }))
+
+    const smsSource =
+      session?.user?.id
+        ? backendSmsAlerts.find((entry) => entry.user_id === session.user.id) ?? null
+        : null
+
+    const smsAlerts: SmsAlertPreferences | null = smsSource
+      ? {
+          phone: smsSource.phone,
+          status: smsSource.status,
+          allowCheckIns: smsSource.allow_checkins,
+          allowSOS: smsSource.allow_sos,
+          verificationExpiresAt: smsSource.verification_expires_at
+            ? new Date(smsSource.verification_expires_at)
+            : null,
+          lastDispatchedAt: smsSource.last_dispatched_at ? new Date(smsSource.last_dispatched_at) : null,
+        }
+      : null
+
     setState((prev) => ({
       ...prev,
       waypoints: uiWaypoints,
@@ -1789,6 +2001,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       groupActivity: uiActivity,
       deviceSessions: deviceSessionViews,
       currentDevice,
+      pushSubscriptions,
+      smsAlerts,
     }))
   }, [
     backendWaypoints,
@@ -1798,6 +2012,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     backendGroupInvitations,
     backendGroupActivity,
     backendDeviceSessions,
+    backendPushSubscriptions,
+    backendSmsAlerts,
     backendPrivacySettings,
     deviceSessionId,
     session?.user?.id,
@@ -1822,6 +2038,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteEmergencyContact,
       sendTestContactNotification,
       updatePrivacySettings,
+      registerPushSubscription,
+      togglePushSubscription: togglePushSubscriptionSetting,
+      beginSmsOptIn,
+      verifySmsCode,
+      updateSmsPreferences,
       signUp,
       signIn,
       signOut,
@@ -1880,16 +2101,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       restorePremium,
       resolveSOS,
       revokeDeviceSession,
+      beginSmsOptIn,
       sendTestContactNotification,
       session,
+      registerPushSubscription,
       signIn,
       signOut,
       signUp,
+      togglePushSubscriptionSetting,
       startTrip,
       state,
       status,
+      updateSmsPreferences,
       toggleGeofenceAlerts,
       triggerSOS,
+      verifySmsCode,
       updatePrivacySettings,
       updateEmergencyContact,
       updateGeofence,

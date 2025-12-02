@@ -153,6 +153,34 @@ export interface DeviceSession {
   updated_at: string;
 }
 
+export interface PushSubscriptionRow {
+  id: string;
+  user_id: string;
+  device_session_id: string | null;
+  token: string;
+  platform: string | null;
+  environment: string | null;
+  enabled: boolean;
+  metadata: Record<string, unknown>;
+  last_delivered_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SmsAlertSubscriptionRow {
+  user_id: string;
+  phone: string;
+  status: 'pending' | 'verified' | 'disabled';
+  verification_code: string | null;
+  verification_expires_at: string | null;
+  verified_at: string | null;
+  allow_checkins: boolean;
+  allow_sos: boolean;
+  last_dispatched_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PullUpdatesResult {
   conversations: Record<string, unknown>[];
   messages: Record<string, unknown>[];
@@ -165,6 +193,8 @@ export interface PullUpdatesResult {
   profiles: Profile[];
   device_sessions: DeviceSession[];
   privacy_settings: PrivacySettingsRow[];
+  push_subscriptions?: PushSubscriptionRow[];
+  sms_alert_subscriptions?: SmsAlertSubscriptionRow[];
 }
 
 export interface AuthResult {
