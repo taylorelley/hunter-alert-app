@@ -70,6 +70,10 @@ type RevenueCatOfferings = {
 let purchasesPromise: Promise<PurchasesLike | null> | null = null
 let lastAppUserId: string | null = null
 
+export function resetCachedPurchasesUser(): void {
+  lastAppUserId = null
+}
+
 function resolveEntitlementActive(customerInfo: unknown, entitlementId: string): boolean {
   if (!customerInfo || typeof customerInfo !== "object") return false
   const info = customerInfo as CustomerInfoLike
@@ -160,6 +164,7 @@ async function loadPurchases(userId?: string): Promise<PurchasesLike | null> {
       lastAppUserId = userId
     } catch (error) {
       console.error("Failed to log in RevenueCat user", error)
+      return null
     }
   }
 
