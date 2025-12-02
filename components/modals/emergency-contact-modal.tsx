@@ -18,7 +18,7 @@ export function EmergencyContactModal({ isOpen, onClose, onSubmit, initialContac
   const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
   const [relationship, setRelationship] = useState("")
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; contact?: string }>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -35,8 +35,8 @@ export function EmergencyContactModal({ isOpen, onClose, onSubmit, initialContac
 
   if (!isOpen) return null
 
-  const validate = () => {
-    const errors: Record<string, string> = {}
+  const validate = (): boolean => {
+    const errors: { name?: string; contact?: string } = {}
     if (!name.trim()) {
       errors.name = "Name is required"
     }
@@ -47,7 +47,7 @@ export function EmergencyContactModal({ isOpen, onClose, onSubmit, initialContac
     return Object.keys(errors).length === 0
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (): Promise<void> => {
     if (!validate()) return
     setIsSaving(true)
     setFormError(null)

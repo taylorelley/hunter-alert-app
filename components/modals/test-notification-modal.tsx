@@ -20,6 +20,7 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
   const [isSending, setIsSending] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const closeTimeoutRef = useRef<number | null>(null)
+  const selectedContact = contacts.find((contact) => contact.id === contactId)
 
   useEffect(() => {
     if (!isOpen) {
@@ -38,6 +39,15 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
   }, [contacts, isOpen])
 
   useEffect(() => {
+    if (!selectedContact) return
+    if (channel === "sms" && !selectedContact.phone && selectedContact.email) {
+      setChannel("email")
+    } else if (channel === "email" && !selectedContact.email && selectedContact.phone) {
+      setChannel("sms")
+    }
+  }, [channel, selectedContact?.email, selectedContact?.phone])
+
+  useEffect(() => {
     return () => {
       if (closeTimeoutRef.current) {
         clearTimeout(closeTimeoutRef.current)
@@ -54,6 +64,16 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
 
     if (!contactId) {
       setError("Select a contact to notify")
+      return
+    }
+
+    if (channel === "sms" && !selectedContact?.phone) {
+      setError("This contact is missing a phone number for SMS")
+      return
+    }
+
+    if (channel === "email" && !selectedContact?.email) {
+      setError("This contact is missing an email address")
       return
     }
 
@@ -125,19 +145,21 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setChannel("sms")}
+                  onClick={() => selectedContact?.phone && setChannel("sms")}
+                  disabled={!selectedContact?.phone}
                   className={`flex items-center gap-2 p-3 rounded-lg border transition-colors ${
                     channel === "sms" ? "border-primary bg-primary/10" : "border-border bg-input"
-                  }`}
+                  } ${selectedContact?.phone ? "" : "opacity-50 cursor-not-allowed"}`}
                 >
                   <Phone className="w-4 h-4" /> SMS
                 </button>
                 <button
                   type="button"
-                  onClick={() => setChannel("email")}
+                  onClick={() => selectedContact?.email && setChannel("email")}
+                  disabled={!selectedContact?.email}
                   className={`flex items-center gap-2 p-3 rounded-lg border transition-colors ${
                     channel === "email" ? "border-primary bg-primary/10" : "border-border bg-input"
-                  }`}
+                  } ${selectedContact?.email ? "" : "opacity-50 cursor-not-allowed"}`}
                 >
                   <Mail className="w-4 h-4" /> Email
                 </button>
@@ -156,7 +178,15 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
               <Button variant="ghost" onClick={onClose} disabled={isSending}>
                 Cancel
               </Button>
-              <Button onClick={handleSend} disabled={isSending || contacts.length === 0}>
+              <Button
+                onClick={handleSend}
+                disabled={
+                  isSending ||
+                  contacts.length === 0 ||
+                  (channel === "sms" && !selectedContact?.phone) ||
+                  (channel === "email" && !selectedContact?.email)
+                }
+              >
                 {isSending ? "Sending..." : "Send test"}
               </Button>
             </div>

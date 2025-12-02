@@ -16,6 +16,12 @@ interface RequestPayload {
   channel?: "sms" | "email"
 }
 
+const redactPhone = (phone?: string) => {
+  if (!phone) return undefined
+  const visible = phone.slice(-4)
+  return `***${visible}`
+}
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")
 
@@ -144,7 +150,7 @@ serve(async (req) => {
       }
     } else {
       const message = "Requested SMS channel but contact has no phone number"
-      console.warn(message, { contact })
+      console.warn(message, { contactId: contact.id, phone: redactPhone(contact.phone) })
       attempts.push({ via: "sms", status: 400, ok: false, message })
     }
   }
