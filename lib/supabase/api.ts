@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { appConfig } from '@/lib/config/env';
 import { MAX_MESSAGE_BYTES } from '@/lib/config/constants';
+import { isValidEmail, validateGeofenceParams } from '@/lib/validation';
 import {
   AuthResult,
   MessageDraft,
@@ -338,7 +339,7 @@ export async function inviteToGroup(
     throw new Error('Invitation email is required');
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+  if (!isValidEmail(normalizedEmail)) {
     throw new Error('Invalid email format');
   }
 
@@ -363,6 +364,46 @@ export async function respondToGroupInvite(
   const { data, error } = await client.rpc('respond_group_invitation', {
     invitation_id: invitationId,
     decision,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as GroupInvitation;
+}
+
+export async function resendGroupInvitation(
+  client: SupabaseClient,
+  invitationId: string,
+): Promise<GroupInvitation> {
+  const { data: sessionData } = await client.auth.getSession();
+  if (!sessionData?.session) {
+    throw new Error('Cannot resend invitation without an active session');
+  }
+
+  const { data, error } = await client.rpc('resend_group_invitation', {
+    invitation_id: invitationId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as GroupInvitation;
+}
+
+export async function withdrawGroupInvitation(
+  client: SupabaseClient,
+  invitationId: string,
+): Promise<GroupInvitation> {
+  const { data: sessionData } = await client.auth.getSession();
+  if (!sessionData?.session) {
+    throw new Error('Cannot withdraw invitation without an active session');
+  }
+
+  const { data, error } = await client.rpc('withdraw_group_invitation', {
+    invitation_id: invitationId,
   });
 
   if (error) {
@@ -439,24 +480,19 @@ export async function createGeofence(
   },
 ): Promise<Geofence> {
   // Client-side validation
-  if (!params.name.trim()) {
-    throw new Error('Geofence name cannot be empty');
-  }
-  if (params.latitude < -90 || params.latitude > 90) {
-    throw new Error('Latitude must be between -90 and 90');
-  }
-  if (params.longitude < -180 || params.longitude > 180) {
-    throw new Error('Longitude must be between -180 and 180');
-  }
-  if (
-    params.radiusMeters !== undefined &&
-    (params.radiusMeters <= 0 || params.radiusMeters > 100000)
-  ) {
-    throw new Error('Radius must be between 1 and 100000 meters');
+  const validationError = validateGeofenceParams({
+    name: params.name,
+    latitude: params.latitude,
+    longitude: params.longitude,
+    radiusMeters: params.radiusMeters ?? 500,
+  });
+
+  if (validationError) {
+    throw new Error(validationError);
   }
 
   const { data, error } = await client.rpc('create_geofence', {
-    geofence_name: params.name,
+    geofence_name: params.name.trim(),
     latitude: params.latitude,
     longitude: params.longitude,
     radius_meters: params.radiusMeters ?? 500,
@@ -482,6 +518,49 @@ export async function toggleGeofence(
   const { data, error } = await client.rpc('toggle_geofence', {
     geofence_id: geofenceId,
     is_enabled: enabled,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Geofence;
+}
+
+export async function updateGeofence(
+  client: SupabaseClient,
+  params: {
+    geofenceId: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+    description?: string;
+  },
+): Promise<Geofence> {
+  const { data: sessionData } = await client.auth.getSession();
+  if (!sessionData?.session) {
+    throw new Error('Cannot update geofence without an active session');
+  }
+
+  const validationError = validateGeofenceParams({
+    name: params.name,
+    latitude: params.latitude,
+    longitude: params.longitude,
+    radiusMeters: params.radiusMeters,
+  });
+
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  const { data, error } = await client.rpc('update_geofence', {
+    geofence_id: params.geofenceId,
+    geofence_name: params.name.trim(),
+    geofence_description: params.description ?? null,
+    latitude: params.latitude,
+    longitude: params.longitude,
+    radius_meters: params.radiusMeters,
   });
 
   if (error) {
