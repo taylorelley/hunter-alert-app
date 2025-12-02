@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { X, MapPin, Tent, Car, AlertTriangle, Droplets, Eye, Globe, Lock, Users, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useApp } from "../app-provider"
 import { cn } from "@/lib/utils"
+import { getCurrentPosition } from "@/lib/geolocation"
 
 interface AddWaypointModalProps {
   isOpen: boolean
@@ -29,16 +30,52 @@ export function AddWaypointModal({ isOpen, onClose }: AddWaypointModalProps) {
   const [isPrivate, setIsPrivate] = useState(true)
   const [shareToGroup, setShareToGroup] = useState<string | null>(null)
   const [isComplete, setIsComplete] = useState(false)
+  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null)
+  const [isLocating, setIsLocating] = useState(false)
+  const [locationError, setLocationError] = useState<string | null>(null)
+
+  const fetchLocation = useCallback(async () => {
+    setIsLocating(true)
+    setLocationError(null)
+    try {
+      const position = await getCurrentPosition({ maximumAge: 5000, timeout: 10000, enableHighAccuracy: true })
+      setCoordinates({ lat: position.latitude, lng: position.longitude })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to access current location"
+      setCoordinates(null)
+      setLocationError(message)
+    } finally {
+      setIsLocating(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isOpen) return
+    fetchLocation()
+  }, [fetchLocation, isOpen])
+
+  const coordinateDisplay = useMemo(() => {
+    if (!coordinates) return null
+
+    const formatCoordinate = (value: number, positiveSuffix: string, negativeSuffix: string) =>
+      `${Math.abs(value).toFixed(5)}°${value >= 0 ? positiveSuffix : negativeSuffix}`
+
+    return `${formatCoordinate(coordinates.lat, "N", "S")}, ${formatCoordinate(coordinates.lng, "E", "W")}`
+  }, [coordinates])
 
   if (!isOpen) return null
 
   const handleSubmit = () => {
     if (!name.trim()) return
+    if (!coordinates) {
+      setLocationError("Current location is required to save a waypoint. Please enable location services and try again.")
+      return
+    }
 
     addWaypoint({
       name: name.trim(),
       type: type as "camp" | "vehicle" | "hazard" | "water" | "viewpoint" | "custom",
-      coordinates: { lat: 43.8 + Math.random() * 0.1, lng: -103.5 + Math.random() * 0.1 },
+      coordinates,
       notes: notes.trim(),
       isPrivate,
     })
@@ -77,12 +114,24 @@ export function AddWaypointModal({ isOpen, onClose }: AddWaypointModalProps) {
           ) : (
             <CardContent className="p-4 space-y-6">
               {/* Current Location */}
-              <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+              <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 space-y-2">
                 <div className="flex items-center gap-2 text-sm">
                   <MapPin className="w-4 h-4 text-primary" />
-                  <span className="font-medium">Using current location</span>
+                  <span className="font-medium">{isLocating ? "Locating..." : "Using current location"}</span>
+                  {locationError && <span className="text-xs text-danger font-medium">Location unavailable</span>}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">43.8042°N, 103.5024°W</p>
+                {coordinateDisplay && !locationError && (
+                  <p className="text-xs text-muted-foreground">{coordinateDisplay}</p>
+                )}
+                {locationError && <p className="text-xs text-danger">{locationError}</p>}
+                {!coordinates && !locationError && !isLocating && (
+                  <p className="text-xs text-muted-foreground">Waiting for GPS lock...</p>
+                )}
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" onClick={fetchLocation} disabled={isLocating}>
+                    {isLocating ? "Requesting location..." : "Retry location"}
+                  </Button>
+                </div>
               </div>
 
               {/* Waypoint Type */}
@@ -192,7 +241,11 @@ export function AddWaypointModal({ isOpen, onClose }: AddWaypointModalProps) {
               )}
 
               {/* Submit Button */}
-              <Button onClick={handleSubmit} disabled={!name.trim()} className="w-full h-12 text-base font-semibold">
+              <Button
+                onClick={handleSubmit}
+                disabled={!name.trim() || isLocating || !coordinates}
+                className="w-full h-12 text-base font-semibold"
+              >
                 <MapPin className="w-5 h-5 mr-2" />
                 Save Waypoint
               </Button>
