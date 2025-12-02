@@ -18,6 +18,8 @@ import {
   recordDeviceSession,
   revokeDeviceSession as apiRevokeDeviceSession,
   listDeviceSessions,
+  updateEmergencyContacts as apiUpdateEmergencyContacts,
+  sendTestNotification as apiSendTestNotification,
 } from "@/lib/supabase/api"
 import { useNetwork } from "./network-provider"
 import { useSyncEngine } from "@/lib/sync/use-sync-engine"
@@ -63,6 +65,14 @@ interface SOSLocation {
   lat: number
   lng: number
   accuracy?: number
+}
+
+export interface EmergencyContact {
+  id: string
+  name: string
+  phone?: string
+  email?: string
+  relationship?: string
 }
 
 export interface Trip {
@@ -189,7 +199,7 @@ interface AppState {
   sosStatus: SOSStatus
   lastSOSLocation: SOSLocation | null
   userName: string
-  emergencyContacts: { name: string; phone: string }[]
+  emergencyContacts: EmergencyContact[]
 }
 
 interface AppContextValue extends AppState {
@@ -204,6 +214,10 @@ interface AppContextValue extends AppState {
   billingError: string | null
   billingReceipt: string | null
   deviceSessionId: string | null
+  addEmergencyContact: (contact: Omit<EmergencyContact, "id">) => Promise<void>
+  updateEmergencyContact: (id: string, contact: Omit<EmergencyContact, "id">) => Promise<void>
+  deleteEmergencyContact: (id: string) => Promise<void>
+  sendTestContactNotification: (options: { contactId: string; channel?: "sms" | "email" }) => Promise<void>
   signUp: (params: { email: string; password: string; displayName?: string }) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
@@ -259,6 +273,27 @@ function mergeRecords<T extends { id?: string }>(current: T[], incoming: T[]): T
     map.set(key, { ...(map.get(key) ?? {}), ...item })
   })
   return Array.from(map.values())
+}
+
+function normalizeEmergencyContacts(value: unknown): EmergencyContact[] {
+  if (!Array.isArray(value)) return []
+
+  return value.reduce<EmergencyContact[]>((contacts, entry, index) => {
+    if (!entry || typeof entry !== "object") return contacts
+
+    const raw = entry as Record<string, unknown>
+    const name = typeof raw.name === "string" ? raw.name.trim() : ""
+    const phone = typeof raw.phone === "string" ? raw.phone.trim() : undefined
+    const email = typeof raw.email === "string" ? raw.email.trim() : undefined
+    const relationship = typeof raw.relationship === "string" ? raw.relationship.trim() : undefined
+
+    if (!name || (!phone && !email)) return contacts
+
+    const id = typeof raw.id === "string" && raw.id.trim().length > 0 ? raw.id : `${uniqueId()}-${index}`
+
+    contacts.push({ id, name, phone, email, relationship })
+    return contacts
+  }, [])
 }
 
 async function getDeviceDescriptor() {
@@ -527,7 +562,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...prev,
         userName: profilePayload.display_name || prev.userName,
         isPremium: false,
-        emergencyContacts: profilePayload.emergency_contacts || prev.emergencyContacts,
+        emergencyContacts: normalizeEmergencyContacts(profilePayload.emergency_contacts ?? prev.emergencyContacts),
       }))
     },
     [supabase],
@@ -641,10 +676,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...prev,
         userName: profileData.display_name || prev.userName,
         isPremium: Boolean(profileData.is_premium),
-        emergencyContacts: profileData.emergency_contacts || prev.emergencyContacts,
+        emergencyContacts: normalizeEmergencyContacts(profileData.emergency_contacts ?? prev.emergencyContacts),
       }))
     }
   }, [session, supabase])
+
+  const persistEmergencyContacts = useCallback(
+    async (contacts: EmergencyContact[]) => {
+      if (!session) throw new Error("Sign-in required to update emergency contacts")
+      const updated = await apiUpdateEmergencyContacts(supabase, contacts)
+      const normalized = normalizeEmergencyContacts(updated)
+
+      setProfile((prev) => (prev ? { ...prev, emergency_contacts: updated as APIProfile["emergency_contacts"] } : prev))
+      setBackendProfiles((prev) => {
+        if (!session?.user?.id) return prev
+        const existingProfile = prev.find((profile) => profile.id === session.user.id)
+        const baseProfile = existingProfile || profile || ({ id: session.user.id } as APIProfile)
+        const mergedProfile = { ...baseProfile, emergency_contacts: updated }
+        return mergeRecords(prev, [mergedProfile])
+      })
+
+      setState((prev) => ({ ...prev, emergencyContacts: normalized }))
+    },
+    [profile, session, supabase],
+  )
+
+  const addEmergencyContact = useCallback(
+    async (contact: Omit<EmergencyContact, "id">) => {
+      const nextContact: EmergencyContact = { ...contact, id: uniqueId() }
+      await persistEmergencyContacts([...state.emergencyContacts, nextContact])
+    },
+    [persistEmergencyContacts, state.emergencyContacts],
+  )
+
+  const updateEmergencyContact = useCallback(
+    async (id: string, contact: Omit<EmergencyContact, "id">) => {
+      const exists = state.emergencyContacts.some((entry) => entry.id === id)
+      if (!exists) throw new Error("Contact not found")
+      const nextContacts = state.emergencyContacts.map((entry) =>
+        entry.id === id ? { ...entry, ...contact, id } : entry,
+      )
+      await persistEmergencyContacts(nextContacts)
+    },
+    [persistEmergencyContacts, state.emergencyContacts],
+  )
+
+  const deleteEmergencyContact = useCallback(
+    async (id: string) => {
+      const nextContacts = state.emergencyContacts.filter((entry) => entry.id !== id)
+      await persistEmergencyContacts(nextContacts)
+    },
+    [persistEmergencyContacts, state.emergencyContacts],
+  )
+
+  const sendTestContactNotification = useCallback(
+    async (options: { contactId: string; channel?: "sms" | "email" }) => {
+      if (!session) throw new Error("Sign-in required to send test notifications")
+      const target = state.emergencyContacts.find((entry) => entry.id === options.contactId)
+      if (!target) throw new Error("Contact not found")
+      await apiSendTestNotification(supabase, { contact: target, channel: options.channel })
+    },
+    [session, state.emergencyContacts, supabase],
+  )
 
   const persistEntitlement = useCallback(
     async (active: boolean, receipt?: string | null) => {
@@ -720,7 +813,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ...prev,
             userName: (profileData as APIProfile).display_name || prev.userName,
             isPremium: Boolean((profileData as APIProfile).is_premium),
-            emergencyContacts: (profileData as APIProfile).emergency_contacts || prev.emergencyContacts,
+            emergencyContacts: normalizeEmergencyContacts(
+              (profileData as APIProfile).emergency_contacts ?? prev.emergencyContacts,
+            ),
           }))
         }
       }
@@ -1535,6 +1630,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       billingError,
       billingReceipt,
       deviceSessionId,
+      addEmergencyContact,
+      updateEmergencyContact,
+      deleteEmergencyContact,
+      sendTestContactNotification,
       signUp,
       signIn,
       signOut,
@@ -1561,6 +1660,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       resolveSOS,
     }),
     [
+      addEmergencyContact,
       addWaypoint,
       billingError,
       billingLoading,
@@ -1570,6 +1670,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       checkIn,
       createGeofence,
       createGroup,
+      deleteEmergencyContact,
       deviceSessionId,
       endTrip,
       inviteToGroup,
@@ -1585,6 +1686,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       restorePremium,
       resolveSOS,
       revokeDeviceSession,
+      sendTestContactNotification,
       session,
       signIn,
       signOut,
@@ -1594,6 +1696,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       status,
       toggleGeofenceAlerts,
       triggerSOS,
+      updateEmergencyContact,
       updateGeofenceAlerts,
       updateTrip,
       user,
