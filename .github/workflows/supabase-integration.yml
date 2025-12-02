@@ -16,10 +16,25 @@ jobs:
     if: github.event_name == 'schedule' || github.event.inputs.run-integration == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      RUN_SUPABASE_INTEGRATION: '1'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Cache Supabase assets (CLI + containers)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.supabase
+            ~/.cache/supabase
+          key: supabase-${{ runner.os }}-${{ hashFiles('backend/supabase/**') }}
+          restore-keys: |
+            supabase-${{ runner.os }}-
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -36,6 +51,4 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Supabase integration suite
-        env:
-          RUN_SUPABASE_INTEGRATION: '1'
         run: pnpm vitest run __tests__/integration --runInBand
