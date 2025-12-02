@@ -20,14 +20,21 @@ import {
   Radio,
   Star,
   Settings,
+  Plus,
+  Trash2,
+  Mail,
+  AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
-import { useApp } from "./app-provider"
+import { EmergencyContact, useApp } from "./app-provider"
 import { useNetwork } from "./network-provider"
 import { AdminDebugPanel } from "./admin-debug-panel"
 import { BillingSettings } from "./billing-settings"
+import { EmergencyContactModal } from "./modals/emergency-contact-modal"
+import { DeleteContactModal } from "./modals/delete-contact-modal"
+import { TestNotificationModal } from "./modals/test-notification-modal"
 
 export function ProfileView() {
   const {
@@ -42,6 +49,10 @@ export function ProfileView() {
     session,
     refreshDeviceSessions,
     revokeDeviceSession,
+    addEmergencyContact,
+    updateEmergencyContact,
+    deleteEmergencyContact,
+    sendTestContactNotification,
   } = useApp()
   const { state: network } = useNetwork()
   const [locationSharing, setLocationSharing] = useState(true)
@@ -55,6 +66,12 @@ export function ProfileView() {
   const [refreshingDevices, setRefreshingDevices] = useState(false)
   const [revokingId, setRevokingId] = useState<string | null>(null)
   const [deviceError, setDeviceError] = useState<string | null>(null)
+  const [contactModalOpen, setContactModalOpen] = useState(false)
+  const [editingContact, setEditingContact] = useState<EmergencyContact | null>(null)
+  const [contactDeletion, setContactDeletion] = useState<EmergencyContact | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [contactError, setContactError] = useState<string | null>(null)
+  const [testModalOpen, setTestModalOpen] = useState(false)
   const showAdminDebug = process.env.NEXT_PUBLIC_ENABLE_ADMIN_DEBUG === "true"
 
   const handleSignIn = async () => {
@@ -96,6 +113,42 @@ export function ProfileView() {
       setDeviceError("Unable to revoke the selected session. Try again when online.")
     } finally {
       setRevokingId(null)
+    }
+  }
+
+  const handleSaveContact = async (contact: Omit<EmergencyContact, "id">) => {
+    setContactError(null)
+    if (editingContact) {
+      await updateEmergencyContact(editingContact.id, contact)
+    } else {
+      await addEmergencyContact(contact)
+    }
+    setEditingContact(null)
+  }
+
+  const handleDeleteContact = async () => {
+    if (!contactDeletion) return
+    setDeleteError(null)
+    setContactError(null)
+    try {
+      await deleteEmergencyContact(contactDeletion.id)
+      setContactDeletion(null)
+    } catch (error) {
+      console.error(error)
+      const message = error instanceof Error ? error.message : "Unable to delete contact. Try again when online."
+      setDeleteError(message)
+      setContactError(message)
+    }
+  }
+
+  const handleSendTestNotification = async (options: { contactId: string; channel?: "sms" | "email" }) => {
+    setContactError(null)
+    try {
+      await sendTestContactNotification(options)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to send a test message right now"
+      setContactError(message)
+      throw error instanceof Error ? error : new Error(message)
     }
   }
 
@@ -171,32 +224,93 @@ export function ProfileView() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Emergency Contacts</h2>
-            <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
-              + Add
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-primary"
+              onClick={() => {
+                setEditingContact(null)
+                setContactModalOpen(true)
+                setContactError(null)
+              }}
+            >
+              <Plus className="w-4 h-4 mr-1" /> Add
             </Button>
           </div>
+          {contactError && (
+            <div className="flex items-center gap-2 text-sm text-danger">
+              <AlertCircle className="w-4 h-4" /> {contactError}
+            </div>
+          )}
           <Card>
             <CardContent className="p-0 divide-y divide-border">
-              {emergencyContacts.map((contact, index) => (
-                <div key={index} className="flex items-center justify-between p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-safe/20 flex items-center justify-center">
-                      <Phone className="w-5 h-5 text-safe" />
+              {emergencyContacts.length === 0 ? (
+                <div className="p-4 text-sm text-muted-foreground">
+                  No emergency contacts yet. Add someone we should notify during check-ins or SOS alerts.
+                </div>
+              ) : (
+                emergencyContacts.map((contact) => (
+                  <div key={contact.id} className="flex items-start justify-between p-4 gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-safe/20 flex items-center justify-center mt-0.5">
+                        <Phone className="w-5 h-5 text-safe" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="font-medium leading-tight">{contact.name}</p>
+                        <p className="text-sm text-muted-foreground flex items-center gap-2">
+                          <Phone className="w-4 h-4" /> {contact.phone || "Missing phone"}
+                        </p>
+                        {contact.email && (
+                          <p className="text-sm text-muted-foreground flex items-center gap-2">
+                            <Mail className="w-4 h-4" /> {contact.email}
+                          </p>
+                        )}
+                        {contact.relationship && (
+                          <p className="text-xs text-muted-foreground">Relationship: {contact.relationship}</p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">{contact.name}</p>
-                      <p className="text-sm text-muted-foreground">{contact.phone}</p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditingContact(contact)
+                          setContactModalOpen(true)
+                          setContactError(null)
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-danger"
+                        onClick={() => {
+                          setContactDeletion(contact)
+                          setDeleteError(null)
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" /> Delete
+                      </Button>
                     </div>
                   </div>
-                  <Button variant="ghost" size="sm">
-                    Edit
-                  </Button>
-                </div>
-              ))}
+                ))
+              )}
               <div className="p-4">
-                <Button variant="outline" size="sm" className="w-full bg-transparent">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full bg-transparent"
+                  disabled={emergencyContacts.length === 0 || !session}
+                  onClick={() => setTestModalOpen(true)}
+                >
                   Send Test Notification
                 </Button>
+                {emergencyContacts.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">Add at least one contact to test alerts.</p>
+                )}
+                {!session && <p className="text-xs text-muted-foreground mt-1">Sign in to trigger a server-side test.</p>}
               </div>
             </CardContent>
           </Card>
@@ -396,6 +510,35 @@ export function ProfileView() {
             </CardContent>
           </Card>
         </div>
+
+        <EmergencyContactModal
+          isOpen={contactModalOpen}
+          onClose={() => {
+            setContactModalOpen(false)
+            setEditingContact(null)
+          }}
+          onSubmit={handleSaveContact}
+          initialContact={editingContact}
+        />
+
+        <DeleteContactModal
+          isOpen={Boolean(contactDeletion)}
+          onClose={() => {
+            setContactDeletion(null)
+            setDeleteError(null)
+          }}
+          onConfirm={handleDeleteContact}
+          contactName={contactDeletion?.name ?? ""}
+          contactDetails={[contactDeletion?.phone, contactDeletion?.email].filter(Boolean).join(" • ")}
+          errorMessage={deleteError}
+        />
+
+        <TestNotificationModal
+          isOpen={testModalOpen}
+          onClose={() => setTestModalOpen(false)}
+          contacts={emergencyContacts}
+          onSend={handleSendTestNotification}
+        />
 
         {/* Admin Debug */}
         {showAdminDebug && <AdminDebugPanel />}

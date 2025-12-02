@@ -212,7 +212,12 @@ export function SOSModal({ isOpen, onClose }: SOSModalProps) {
                             sosStatus === "queued" || sosStatus === "sending" ? "text-warning" : "text-safe",
                           )}
                         />
-                        <span className="flex-1 text-left">{contact.name}</span>
+                        <span className="flex-1 text-left">
+                          <span className="block">{contact.name}</span>
+                          <span className="block text-[11px] text-muted-foreground">
+                            {contact.phone || contact.email || "No contact method"}
+                          </span>
+                        </span>
                         <span className="text-xs text-muted-foreground capitalize">{sosStatus}</span>
                       </div>
                     ))

@@ -84,8 +84,10 @@ export interface Profile {
   email: string | null;
   phone: string | null;
   emergency_contacts: Array<{
+    id?: string;
     name: string;
-    phone: string;
+    phone?: string;
+    email?: string;
     relationship?: string;
   }>;
   is_premium: boolean;

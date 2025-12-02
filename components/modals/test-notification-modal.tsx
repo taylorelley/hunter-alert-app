@@ -1,0 +1,135 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { X, MessageSquare, Mail, Phone, CheckCircle2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { EmergencyContact } from "../app-provider"
+
+interface TestNotificationModalProps {
+  isOpen: boolean
+  onClose: () => void
+  contacts: EmergencyContact[]
+  onSend: (options: { contactId: string; channel?: "sms" | "email" }) => Promise<void>
+}
+
+export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: TestNotificationModalProps) {
+  const [contactId, setContactId] = useState<string>("")
+  const [channel, setChannel] = useState<"sms" | "email">("sms")
+  const [error, setError] = useState<string | null>(null)
+  const [isSending, setIsSending] = useState(false)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    setError(null)
+    setSuccessMessage(null)
+    setIsSending(false)
+    const preferred = contacts.find((contact) => contact.phone) ?? contacts[0]
+    setContactId(preferred?.id ?? "")
+    setChannel(preferred?.phone ? "sms" : "email")
+  }, [contacts, isOpen])
+
+  if (!isOpen) return null
+
+  const handleSend = async () => {
+    setError(null)
+    setSuccessMessage(null)
+
+    if (!contactId) {
+      setError("Select a contact to notify")
+      return
+    }
+
+    setIsSending(true)
+    try {
+      await onSend({ contactId, channel })
+      setSuccessMessage("Test notification queued. We will try SMS first, then email if available.")
+      setTimeout(onClose, 1200)
+    } catch (err) {
+      console.error(err)
+      setError(err instanceof Error ? err.message : "Unable to send the test notification")
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
+      <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-lg mx-auto">
+        <Card className="shadow-2xl">
+          <div className="flex items-center justify-between p-4 border-b border-border">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-semibold">Send test notification</h2>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors" aria-label="Close">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <CardContent className="p-4 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Choose contact</label>
+              <select
+                className="w-full p-3 rounded-lg bg-input border border-border text-sm"
+                value={contactId}
+                onChange={(e) => setContactId(e.target.value)}
+              >
+                <option value="" disabled>
+                  Select a contact
+                </option>
+                {contacts.map((contact) => (
+                  <option key={contact.id} value={contact.id}>
+                    {contact.name} • {contact.phone || contact.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Channel</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setChannel("sms")}
+                  className={`flex items-center gap-2 p-3 rounded-lg border transition-colors ${
+                    channel === "sms" ? "border-primary bg-primary/10" : "border-border bg-input"
+                  }`}
+                >
+                  <Phone className="w-4 h-4" /> SMS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChannel("email")}
+                  className={`flex items-center gap-2 p-3 rounded-lg border transition-colors ${
+                    channel === "email" ? "border-primary bg-primary/10" : "border-border bg-input"
+                  }`}
+                >
+                  <Mail className="w-4 h-4" /> Email
+                </button>
+              </div>
+            </div>
+
+            {error && <p className="text-sm text-danger">{error}</p>}
+            {successMessage && (
+              <p className="text-sm text-safe flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                {successMessage}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={onClose} disabled={isSending}>
+                Cancel
+              </Button>
+              <Button onClick={handleSend} disabled={isSending || contacts.length === 0}>
+                {isSending ? "Sending..." : "Send test"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}

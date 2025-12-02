@@ -12,6 +12,14 @@ import {
   DeviceSession,
 } from './types';
 
+type EmergencyContactPayload = {
+  id?: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  relationship?: string;
+};
+
 const DEFAULT_BATCH_LIMIT = appConfig.constraints.backendMaxMessageBatch.value;
 const DEFAULT_PULL_LIMIT = appConfig.constraints.backendMaxPullLimit.value;
 
@@ -504,4 +512,81 @@ export async function deleteGeofence(client: SupabaseClient, geofenceId: string)
   }
 
   return data as boolean;
+}
+
+function sanitizeEmergencyContact(contact: EmergencyContactPayload): EmergencyContactPayload {
+  const name = contact.name?.trim();
+  const phone = contact.phone?.trim();
+  const email = contact.email?.trim();
+  const relationship = contact.relationship?.trim();
+
+  if (!name) {
+    throw new Error('Contact name is required');
+  }
+
+  if (!phone && !email) {
+    throw new Error('A phone number or email is required for notifications');
+  }
+
+  return {
+    id: contact.id,
+    name,
+    phone,
+    email,
+    relationship,
+  };
+}
+
+export async function updateEmergencyContacts(
+  client: SupabaseClient,
+  contacts: EmergencyContactPayload[],
+): Promise<EmergencyContactPayload[]> {
+  const { data: authData, error: authError } = await client.auth.getUser();
+  if (authError) {
+    throw authError;
+  }
+
+  const userId = authData?.user?.id;
+  if (!userId) {
+    throw new Error('Sign-in required to update emergency contacts');
+  }
+
+  const normalized = contacts.map((contact) => ({
+    ...sanitizeEmergencyContact(contact),
+    id: contact.id ?? globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`,
+  }));
+
+  const { data, error } = await client
+    .from('profiles')
+    .update({ emergency_contacts: normalized })
+    .eq('id', userId)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data?.emergency_contacts as EmergencyContactPayload[] | null) ?? normalized;
+}
+
+export async function sendTestNotification(
+  client: SupabaseClient,
+  params: { contact: EmergencyContactPayload; channel?: 'sms' | 'email' },
+): Promise<Record<string, unknown>> {
+  const contact = sanitizeEmergencyContact(params.contact);
+  const channel = params.channel ?? (contact.phone ? 'sms' : 'email');
+
+  const { data, error } = await client.functions.invoke('send-test-notification', {
+    body: {
+      contact,
+      channel,
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data as Record<string, unknown> | null) ?? { success: true };
 }
