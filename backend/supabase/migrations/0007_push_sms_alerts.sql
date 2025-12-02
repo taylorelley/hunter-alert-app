@@ -172,10 +172,14 @@ $$ language plpgsql security invoker set search_path = public;
 comment on function public.confirm_sms_verification is 'Validate an SMS verification code and enable alerts for the authenticated user.';
 
 -- Extend pull_updates with push + SMS preferences
-create or replace function public.pull_updates(since timestamptz default null)
+create or replace function public.pull_updates(
+  since timestamptz default null,
+  max_rows int default null
+)
 returns jsonb as $$
 declare
-  max_rows int := coalesce(current_setting('app.max_pull_limit', true)::int, 100);
+  configured_max int := coalesce(current_setting('app.max_pull_limit', true)::int, 100);
+  effective_max int := greatest(1, least(coalesce(max_rows, configured_max), configured_max));
 begin
   if auth.uid() is null then
     raise exception 'Authentication is required';
@@ -193,7 +197,7 @@ begin
           )
           and (since is null or updated_at > since)
         order by updated_at asc
-        limit max_rows
+        limit effective_max
       ) as c
     ),
     'messages', (
@@ -208,7 +212,7 @@ begin
           )
           and (since is null or m.created_at > since)
         order by m.created_at asc
-        limit max_rows
+        limit effective_max
       ) as m
     ),
     'sync_cursors', (
@@ -217,7 +221,7 @@ begin
         where user_id = auth.uid()
           and (since is null or updated_at > since)
         order by updated_at asc
-        limit max_rows
+        limit effective_max
       ) as s
     ),
     'groups', (
@@ -226,7 +230,7 @@ begin
         where (owner_id = auth.uid() or auth.uid() = any(member_ids))
           and (since is null or updated_at > since)
         order by updated_at asc
-        limit max_rows
+        limit effective_max
       ) as g
     ),
     'waypoints', (
@@ -245,7 +249,7 @@ begin
         )
           and (since is null or w.updated_at > since)
         order by w.updated_at asc
-        limit max_rows
+        limit effective_max
       ) as w
     ),
     'geofences', (
@@ -267,7 +271,7 @@ begin
         )
           and (since is null or gf.updated_at > since)
         order by gf.updated_at asc
-        limit max_rows
+        limit effective_max
       ) as gf
     ),
     'profiles', (
@@ -305,7 +309,7 @@ begin
         )
           and (since is null or p.updated_at > since)
         order by p.updated_at asc
-        limit max_rows
+        limit effective_max
       ) as safe_profile
     ),
     'group_invitations', (
@@ -320,7 +324,7 @@ begin
         )
           and (since is null or updated_at > since)
         order by updated_at asc
-        limit max_rows
+        limit effective_max
       ) as gi
     ),
     'group_activity', (
@@ -334,7 +338,7 @@ begin
         )
           and (since is null or updated_at > since)
         order by updated_at asc
-        limit max_rows
+        limit effective_max
       ) as ga
     ),
     'privacy_settings', (
@@ -350,7 +354,7 @@ begin
         )
           and (since is null or updated_at > since)
         order by updated_at asc
-        limit max_rows
+        limit effective_max
       ) as ps
     ),
     'device_sessions', (
@@ -359,7 +363,7 @@ begin
         where user_id = auth.uid()
           and (since is null or updated_at > since)
         order by updated_at asc
-        limit max_rows
+        limit effective_max
       ) as ds
     ),
     'push_subscriptions', (
@@ -368,7 +372,7 @@ begin
         where user_id = auth.uid()
           and (since is null or updated_at > since)
         order by updated_at asc
-        limit max_rows
+        limit effective_max
       ) as psub
     ),
     'sms_alert_subscriptions', (
@@ -377,7 +381,7 @@ begin
         where user_id = auth.uid()
           and (since is null or updated_at > since)
         order by updated_at asc
-        limit max_rows
+        limit effective_max
       ) as sms
     )
   );

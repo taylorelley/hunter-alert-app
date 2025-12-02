@@ -181,7 +181,12 @@ export async function pullUpdates(
   since?: string | null,
   maxRows = DEFAULT_PULL_LIMIT,
 ): Promise<PullUpdatesResult> {
-  const { data, error } = await client.rpc('pull_updates', { since: since ?? null });
+  const clampedMaxRows = Math.max(1, Math.min(maxRows, DEFAULT_PULL_LIMIT));
+
+  const { data, error } = await client.rpc('pull_updates', {
+    since: since ?? null,
+    max_rows: clampedMaxRows,
+  });
 
   if (error) {
     throw error;
@@ -205,33 +210,41 @@ export async function pullUpdates(
 
   if (data && typeof data === 'object') {
     result.conversations = Array.isArray(data.conversations)
-      ? data.conversations.slice(0, maxRows)
+      ? data.conversations.slice(0, clampedMaxRows)
       : [];
-    result.messages = Array.isArray(data.messages) ? data.messages.slice(0, maxRows) : [];
+    result.messages = Array.isArray(data.messages)
+      ? data.messages.slice(0, clampedMaxRows)
+      : [];
     result.sync_cursors = Array.isArray(data.sync_cursors)
-      ? data.sync_cursors.slice(0, maxRows)
+      ? data.sync_cursors.slice(0, clampedMaxRows)
       : [];
-    result.groups = Array.isArray(data.groups) ? data.groups.slice(0, maxRows) : [];
+    result.groups = Array.isArray(data.groups) ? data.groups.slice(0, clampedMaxRows) : [];
     result.group_invitations = Array.isArray(data.group_invitations)
-      ? data.group_invitations.slice(0, maxRows)
+      ? data.group_invitations.slice(0, clampedMaxRows)
       : [];
     result.group_activity = Array.isArray(data.group_activity)
-      ? data.group_activity.slice(0, maxRows)
+      ? data.group_activity.slice(0, clampedMaxRows)
       : [];
-    result.waypoints = Array.isArray(data.waypoints) ? data.waypoints.slice(0, maxRows) : [];
-    result.geofences = Array.isArray(data.geofences) ? data.geofences.slice(0, maxRows) : [];
-    result.profiles = Array.isArray(data.profiles) ? data.profiles.slice(0, maxRows) : [];
+    result.waypoints = Array.isArray(data.waypoints)
+      ? data.waypoints.slice(0, clampedMaxRows)
+      : [];
+    result.geofences = Array.isArray(data.geofences)
+      ? data.geofences.slice(0, clampedMaxRows)
+      : [];
+    result.profiles = Array.isArray(data.profiles)
+      ? data.profiles.slice(0, clampedMaxRows)
+      : [];
     result.device_sessions = Array.isArray(data.device_sessions)
-      ? data.device_sessions.slice(0, maxRows)
+      ? data.device_sessions.slice(0, clampedMaxRows)
       : [];
     result.privacy_settings = Array.isArray(data.privacy_settings)
-      ? (data.privacy_settings.slice(0, maxRows) as PrivacySettingsRow[])
+      ? (data.privacy_settings.slice(0, clampedMaxRows) as PrivacySettingsRow[])
       : [];
     result.push_subscriptions = Array.isArray(data.push_subscriptions)
-      ? data.push_subscriptions.slice(0, maxRows)
+      ? data.push_subscriptions.slice(0, clampedMaxRows)
       : [];
     result.sms_alert_subscriptions = Array.isArray(data.sms_alert_subscriptions)
-      ? data.sms_alert_subscriptions.slice(0, maxRows)
+      ? data.sms_alert_subscriptions.slice(0, clampedMaxRows)
       : [];
   }
 
