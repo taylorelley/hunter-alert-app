@@ -45,7 +45,7 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.warn("Supabase environment variables are missing; auth will fail")
 }
 
-async function sendSms(contact: ContactPayload, body: string) {
+async function sendSms(contact: ContactPayload, body: string): Promise<{ ok: boolean; status: number; message: string }> {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER) {
     console.log("Twilio credentials missing; simulating SMS send")
     return { ok: true, status: 202, message: "Simulated SMS delivery" }
@@ -83,7 +83,7 @@ async function sendSms(contact: ContactPayload, body: string) {
   }
 }
 
-async function sendEmail(contact: ContactPayload, subject: string, body: string) {
+async function sendEmail(contact: ContactPayload, subject: string, body: string): Promise<{ ok: boolean; status: number; message: string }> {
   if (!POSTMARK_TOKEN || !POSTMARK_FROM) {
     console.log("Postmark credentials missing; simulating email send")
     return { ok: true, status: 202, message: "Simulated email delivery" }
@@ -172,7 +172,11 @@ serve(async (req) => {
       }
     } else {
       const message = "Requested SMS channel but contact has no phone number"
-      console.warn(message, { contactId: contact.id, phone: redactPhone(contact.phone) })
+      const logMetadata: Record<string, string> = { contactName: contact.name }
+      if (contact.id) {
+        logMetadata.contactId = contact.id
+      }
+      console.warn(message, logMetadata)
       attempts.push({ via: "sms", status: 400, ok: false, message })
     }
   }
@@ -185,17 +189,22 @@ serve(async (req) => {
     }
   }
 
+  const contactResponse: Record<string, unknown> = {
+    name: contact.name,
+    phone: redactPhone(contact.phone),
+    email: redactEmail(contact.email),
+    emailProvided: Boolean(contact.email),
+  }
+
+  if (contact.id) {
+    contactResponse.id = contact.id
+  }
+
   return new Response(
     JSON.stringify({
       deliveredVia,
       attempted: attempts,
-      contact: {
-        id: contact.id,
-        name: contact.name,
-        phone: redactPhone(contact.phone),
-        email: redactEmail(contact.email),
-        emailProvided: Boolean(contact.email),
-      },
+      contact: contactResponse,
       channel,
     }),
     {
