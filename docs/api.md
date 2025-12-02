@@ -73,6 +73,7 @@ Marks a pending invitation as resent by updating its metadata. Only the original
 **Behavior**
 - Validates the caller is authenticated and the invitation exists.
 - Verifies `auth.uid()` matches `sender_id` before updating `metadata.resent_at`.
+- Rejects non-pending invitations with a descriptive error.
 - Returns the full `group_invitations` row after the update.
 
 ## RPC: `withdraw_group_invitation(invitation_id uuid)`

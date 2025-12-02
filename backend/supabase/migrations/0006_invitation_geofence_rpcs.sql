@@ -78,14 +78,17 @@ comment on function public.withdraw_group_invitation is 'Allow invitation sender
 create or replace function public.update_geofence(
   geofence_id uuid,
   geofence_name text,
-  geofence_latitude double precision,
-  geofence_longitude double precision,
-  geofence_radius_meters int,
+  latitude double precision,
+  longitude double precision,
+  radius_meters int,
   geofence_description text default null
 )
 returns geofences as $$
 declare
   updated_geofence geofences;
+  normalized_latitude double precision := latitude;
+  normalized_longitude double precision := longitude;
+  normalized_radius_meters int := radius_meters;
 begin
   if auth.uid() is null then
     raise exception 'Authentication is required';
@@ -94,9 +97,9 @@ begin
   update geofences
   set name = geofence_name,
       description = geofence_description,
-      latitude = geofence_latitude,
-      longitude = geofence_longitude,
-      radius_meters = geofence_radius_meters
+      latitude = normalized_latitude,
+      longitude = normalized_longitude,
+      radius_meters = normalized_radius_meters
   where id = geofence_id
     and user_id = auth.uid()
   returning * into updated_geofence;
