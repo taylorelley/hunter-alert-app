@@ -126,14 +126,18 @@ export async function sendBatch(
   drafts: MessageDraft[],
   maxBatchSize = DEFAULT_BATCH_LIMIT,
 ): Promise<SendBatchResult> {
+  const requestedBatchSize = Math.max(1, maxBatchSize);
+  const effectiveBatchSize = Math.min(requestedBatchSize, DEFAULT_BATCH_LIMIT);
   const { accepted, rejected } = sanitizeMessages(drafts);
 
-  if (accepted.length > maxBatchSize) {
-    throw new Error(`Batch too large; maximum allowed is ${maxBatchSize} messages.`);
+  if (accepted.length > requestedBatchSize) {
+    throw new Error(
+      `Batch too large; maximum allowed is ${requestedBatchSize} messages.`,
+    );
   }
 
-  // Clamp defensively to protect against future call sites that skip length checks.
-  const payload = clampBatch(accepted, maxBatchSize);
+  // Clamp defensively to the backend-enforced limit even when callers request more.
+  const payload = clampBatch(accepted, effectiveBatchSize);
   if (payload.length === 0) {
     return { data: [], error: null, dropped: rejected };
   }

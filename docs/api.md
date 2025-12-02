@@ -33,7 +33,7 @@ Batched insert of outbound messages. The function enforces authentication, paylo
 ```
 
 **Limits**
-- Maximum batch size: `app.max_message_batch` (defaults to 20; configurable via `BACKEND_MAX_MESSAGE_BATCH`).
+- Maximum batch size: `app.max_message_batch` (defaults to 20; configurable via `BACKEND_MAX_MESSAGE_BATCH`). Client requests are clamped to this server-enforced limit even if a larger `maxBatchSize` is supplied.
 - Maximum body length: 4,000 bytes per message.
 - Empty or whitespace-only bodies are skipped.
 - Only messages targeting conversations that already include the caller are accepted.

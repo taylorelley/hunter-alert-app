@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { appConfig } from '../lib/config/env';
 import { authenticate, listDeviceSessions, pullUpdates, recordDeviceSession, revokeDeviceSession, sendBatch } from '../lib/supabase/api';
 import { MessageDraft } from '../lib/supabase/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -48,6 +49,28 @@ describe('supabase api wrapper', () => {
     }));
 
     await expect(sendBatch(client, drafts, 2)).rejects.toThrow('Batch too large');
+  });
+
+  it('clamps oversized client batch requests to the backend limit', async () => {
+    const client = mockClient();
+    (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: ['ok'], error: null });
+
+    const backendLimit = appConfig.constraints.backendMaxMessageBatch.value;
+    const drafts: MessageDraft[] = Array.from({ length: backendLimit + 5 }, (_, idx) => ({
+      conversation_id: 'c1',
+      body: `message-${idx}`,
+    }));
+
+    const result = await sendBatch(client, drafts, backendLimit + 10);
+
+    const payload = (client.rpc as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].messages as MessageDraft[];
+    expect(payload).toHaveLength(backendLimit);
+    expect(payload[0]).toEqual({ conversation_id: 'c1', body: 'message-0' });
+    expect(payload[payload.length - 1]).toEqual({
+      conversation_id: 'c1',
+      body: `message-${backendLimit - 1}`,
+    });
+    expect(result.dropped).toEqual([]);
   });
 
   it('trims and filters messages before sending', async () => {
