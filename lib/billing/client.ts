@@ -1,4 +1,3 @@
-import { Capacitor } from "@capacitor/core"
 import { appConfig } from "@/lib/config/env"
 
 export interface BillingPackage {
@@ -31,6 +30,7 @@ type PurchasesLike = {
   purchasePackage?: (params: Record<string, unknown>) => Promise<unknown>
   restorePurchases?: () => Promise<unknown>
   getCustomerInfo?: () => Promise<unknown>
+  logIn?: (userId: string) => Promise<unknown>
 }
 
 type CustomerInfoLike = {
@@ -68,6 +68,7 @@ type RevenueCatOfferings = {
 }
 
 let purchasesPromise: Promise<PurchasesLike | null> | null = null
+let lastAppUserId: string | null = null
 
 function resolveEntitlementActive(customerInfo: unknown, entitlementId: string): boolean {
   if (!customerInfo || typeof customerInfo !== "object") return false
@@ -139,7 +140,7 @@ async function loadPurchases(userId?: string): Promise<PurchasesLike | null> {
         if (typeof purchases.configure === "function") {
           await purchases.configure({
             apiKey: appConfig.billing.revenueCatApiKey,
-            appUserID: userId,
+            observerMode: false,
           })
         }
         return purchases as PurchasesLike
@@ -153,12 +154,13 @@ async function loadPurchases(userId?: string): Promise<PurchasesLike | null> {
   const purchases = await purchasesPromise
   if (!purchases) return null
 
-  if (Capacitor.isNativePlatform() && typeof purchases.configure === "function") {
-    await purchases.configure({
-      apiKey: appConfig.billing.revenueCatApiKey,
-      appUserID: userId,
-      observerMode: false,
-    })
+  if (userId && userId !== lastAppUserId && typeof purchases.logIn === "function") {
+    try {
+      await purchases.logIn(userId)
+      lastAppUserId = userId
+    } catch (error) {
+      console.error("Failed to log in RevenueCat user", error)
+    }
   }
 
   return purchases
