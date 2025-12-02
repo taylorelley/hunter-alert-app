@@ -347,10 +347,13 @@ export async function upsertPushSubscription(
     throw new Error('Cannot upsert push subscription without an active session')
   }
 
+  const userId = sessionData.session.user.id
+
   const { data, error } = await client
     .from('push_subscriptions')
     .upsert(
       {
+        user_id: userId,
         token: payload.token,
         device_session_id: payload.deviceSessionId ?? null,
         platform: payload.platform ?? null,

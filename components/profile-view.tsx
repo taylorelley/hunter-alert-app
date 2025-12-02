@@ -263,11 +263,15 @@ export function ProfileView() {
       setSmsError("Start verification first to manage SMS alerts")
       return
     }
+    const validStatuses = ["pending", "verified", "disabled"] as const
+    const status = validStatuses.includes(changes.status as (typeof validStatuses)[number])
+      ? (changes.status as SmsAlertPreferences["status"])
+      : undefined
     try {
       await updateSmsPreferences({
         allowCheckIns: changes.allowCheckIns,
         allowSOS: changes.allowSOS,
-        status: changes.status as SmsAlertPreferences["status"] | undefined,
+        status,
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to update SMS alert preferences"

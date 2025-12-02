@@ -155,7 +155,7 @@ begin
     raise exception 'Verification code expired';
   end if;
 
-  if subscription.verification_code <> code then
+  if encode(digest(subscription.verification_code, 'sha256'), 'hex') <> encode(digest(code, 'sha256'), 'hex') then
     raise exception 'Invalid verification code';
   end if;
 

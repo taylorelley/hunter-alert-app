@@ -1934,8 +1934,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }))
 
     const smsSource =
-      (session?.user?.id && backendSmsAlerts.find((entry) => entry.user_id === session.user.id)) ||
-      backendSmsAlerts[0]
+      session?.user?.id
+        ? backendSmsAlerts.find((entry) => entry.user_id === session.user.id) ?? null
+        : null
 
     const smsAlerts: SmsAlertPreferences | null = smsSource
       ? {
