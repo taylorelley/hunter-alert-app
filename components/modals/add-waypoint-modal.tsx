@@ -23,7 +23,7 @@ const waypointTypes = [
 ]
 
 export function AddWaypointModal({ isOpen, onClose }: AddWaypointModalProps) {
-  const { addWaypoint, groups, state } = useApp()
+  const { addWaypoint, groups, privacySettings } = useApp()
   const [name, setName] = useState("")
   const [type, setType] = useState<string>("custom")
   const [notes, setNotes] = useState("")
@@ -54,7 +54,7 @@ export function AddWaypointModal({ isOpen, onClose }: AddWaypointModalProps) {
     fetchLocation()
   }, [fetchLocation, isOpen])
 
-  const allowGroupSharing = state.privacySettings.shareWaypoints
+  const allowGroupSharing = privacySettings.shareWaypoints
 
   useEffect(() => {
     if (!allowGroupSharing) {
