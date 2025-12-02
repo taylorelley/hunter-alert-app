@@ -4,6 +4,8 @@
 
 This is **Hunter Alert**, a production-ready mobile-first application built with React, Next.js, and Capacitor, specifically optimized for constrained networks including satellite connections. This guide helps AI assistants understand the codebase structure, development workflows, and key conventions.
 
+> **Note**: For quick reference and action-oriented instructions, see `AGENTS.md`. This file provides comprehensive documentation and architectural details.
+
 **Target Use Case:** Hunters and outdoor enthusiasts checking in from remote areas with limited connectivity (satellite, low-bandwidth cellular, offline environments).
 
 **Tech Stack:**
@@ -749,6 +751,10 @@ pnpm test:coverage       # Coverage report
 ---
 
 ## Documentation References
+
+**AI Assistant Guides**:
+- `AGENTS.md` - Quick reference and action-oriented instructions for AI agents
+- `CLAUDE.md` (this file) - Comprehensive documentation and architectural details
 
 **Project Docs** (`docs/`):
 - `api.md` - RPC payload/response specifications
