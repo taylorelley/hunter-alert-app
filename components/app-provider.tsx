@@ -875,15 +875,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (network.connectivity === "offline") {
       throw new Error("Connect to the network to enable push notifications")
     }
-    const registration = await requestPushRegistration()
-    const record = await upsertPushSubscription(supabase, {
-      token: registration.token,
-      deviceSessionId,
-      platform: registration.platform,
-      environment: registration.environment,
-    })
+    try {
+      const registration = await requestPushRegistration()
+      const record = await upsertPushSubscription(supabase, {
+        token: registration.token,
+        deviceSessionId,
+        platform: registration.platform,
+        environment: registration.environment,
+      })
 
-    setBackendPushSubscriptions((prev) => mergeRecords(prev, [record]))
+      setBackendPushSubscriptions((prev) => mergeRecords(prev, [record]))
+    } catch (error) {
+      console.error("Failed to register push subscription:", error)
+      throw new Error("Unable to enable push notifications. Please try again.")
+    }
   }, [deviceSessionId, network.connectivity, session, supabase])
 
   const togglePushSubscriptionSetting = useCallback(
@@ -892,8 +897,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (network.connectivity === "offline") {
         throw new Error("Connect to the network to update push notifications")
       }
-      const record = await togglePushSubscription(supabase, id, enabled)
-      setBackendPushSubscriptions((prev) => mergeRecords(prev, [record]))
+      try {
+        const record = await togglePushSubscription(supabase, id, enabled)
+        setBackendPushSubscriptions((prev) => mergeRecords(prev, [record]))
+      } catch (error) {
+        console.error("Failed to update push subscription:", error)
+        throw new Error("Unable to update push notifications. Please try again.")
+      }
     },
     [network.connectivity, session, supabase],
   )
@@ -904,8 +914,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (network.connectivity === "offline") {
         throw new Error("Connect to the network to start SMS verification")
       }
-      const record = await beginSmsVerification(supabase, { phone, allowCheckIns, allowSos: allowSOS })
-      setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
+      try {
+        const record = await beginSmsVerification(supabase, { phone, allowCheckIns, allowSos: allowSOS })
+        setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
+      } catch (error) {
+        console.error("Failed to start SMS verification:", error)
+        throw new Error("Unable to start SMS verification. Please try again.")
+      }
     },
     [network.connectivity, session, supabase],
   )
@@ -916,8 +931,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (network.connectivity === "offline") {
         throw new Error("Connect to the network to verify SMS alerts")
       }
-      const record = await confirmSmsVerification(supabase, code)
-      setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
+      try {
+        const record = await confirmSmsVerification(supabase, code)
+        setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
+      } catch (error) {
+        console.error("Failed to verify SMS code:", error)
+        throw new Error("Unable to verify SMS alerts. Please try again.")
+      }
     },
     [network.connectivity, session, supabase],
   )
@@ -928,12 +948,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (network.connectivity === "offline") {
         throw new Error("Connect to the network to update SMS alerts")
       }
-      const record = await apiUpdateSmsPreferences(supabase, {
-        allow_checkins: changes.allowCheckIns,
-        allow_sos: changes.allowSOS,
-        status: changes.status,
-      })
-      setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
+      try {
+        const record = await apiUpdateSmsPreferences(supabase, {
+          allow_checkins: changes.allowCheckIns,
+          allow_sos: changes.allowSOS,
+          status: changes.status,
+        })
+        setBackendSmsAlerts((prev) => mergeRecords(prev, [{ ...record, id: record.user_id }]))
+      } catch (error) {
+        console.error("Failed to update SMS preferences:", error)
+        throw new Error("Unable to update SMS alerts. Please try again.")
+      }
     },
     [network.connectivity, session, supabase],
   )
