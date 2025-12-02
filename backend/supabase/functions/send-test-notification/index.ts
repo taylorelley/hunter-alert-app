@@ -135,11 +135,17 @@ serve(async (req) => {
 
   let deliveredVia: string | null = null
 
-  if (channel === "sms" && contact.phone) {
-    const smsResult = await sendSms(contact, message)
-    attempts.push({ via: "sms", status: smsResult.status, ok: smsResult.ok, message: smsResult.message })
-    if (smsResult.ok) {
-      deliveredVia = "sms"
+  if (channel === "sms") {
+    if (contact.phone) {
+      const smsResult = await sendSms(contact, message)
+      attempts.push({ via: "sms", status: smsResult.status, ok: smsResult.ok, message: smsResult.message })
+      if (smsResult.ok) {
+        deliveredVia = "sms"
+      }
+    } else {
+      const message = "Requested SMS channel but contact has no phone number"
+      console.warn(message, { contact })
+      attempts.push({ via: "sms", status: 400, ok: false, message })
     }
   }
 

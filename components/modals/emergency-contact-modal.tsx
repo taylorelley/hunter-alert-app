@@ -81,7 +81,15 @@ export function EmergencyContactModal({ isOpen, onClose, onSubmit, initialContac
                 {initialContact ? "Edit Emergency Contact" : "Add Emergency Contact"}
               </h2>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors" aria-label="Close">
+            <button
+              onClick={isSaving ? undefined : onClose}
+              disabled={isSaving}
+              aria-disabled={isSaving}
+              className={`p-2 rounded-lg transition-colors ${
+                isSaving ? "opacity-50 cursor-not-allowed" : "hover:bg-muted"
+              }`}
+              aria-label="Close"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>

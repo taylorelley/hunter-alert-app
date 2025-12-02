@@ -85,7 +85,15 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
               <MessageSquare className="w-5 h-5 text-primary" />
               <h2 className="text-lg font-semibold">Send test notification</h2>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors" aria-label="Close">
+            <button
+              onClick={isSending ? undefined : onClose}
+              disabled={isSending}
+              aria-disabled={isSending}
+              className={`p-2 rounded-lg transition-colors ${
+                isSending ? "opacity-50 cursor-not-allowed" : "hover:bg-muted"
+              }`}
+              aria-label="Close"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
