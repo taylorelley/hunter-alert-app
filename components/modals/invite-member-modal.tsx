@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AtSign, Loader2, Shield, UserPlus, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { isValidEmail } from "@/lib/validation"
 
 interface InviteMemberModalProps {
   isOpen: boolean
@@ -19,16 +20,57 @@ export function InviteMemberModal({ isOpen, onClose, onSubmit, groupName }: Invi
   const [role, setRole] = useState<"member" | "admin">("member")
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const modalRef = useRef<HTMLDivElement>(null)
+  const emailInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (isOpen) {
       setEmail("")
       setRole("member")
       setError(null)
+      emailInputRef.current?.focus()
     }
   }, [isOpen])
 
-  const isValidEmail = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()), [email])
+  const isEmailValid = useMemo(() => isValidEmail(email), [email])
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (!isOpen) return
+
+      if (event.key === "Escape" && !isSubmitting) {
+        onClose()
+      }
+
+      if (event.key === "Tab" && modalRef.current) {
+        const focusable = Array.from(
+          modalRef.current.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((el) => !el.hasAttribute("disabled"))
+
+        if (focusable.length === 0) return
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault()
+          first.focus()
+        } else if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault()
+          last.focus()
+        }
+      }
+    },
+    [isOpen, isSubmitting, onClose],
+  )
+
+  useEffect(() => {
+    if (!isOpen) return
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [handleKeyDown, isOpen])
 
   if (!isOpen) return null
 
@@ -40,7 +82,7 @@ export function InviteMemberModal({ isOpen, onClose, onSubmit, groupName }: Invi
       return
     }
 
-    if (!isValidEmail) {
+    if (!isEmailValid) {
       setError("Enter a valid email address")
       return
     }
@@ -62,9 +104,18 @@ export function InviteMemberModal({ isOpen, onClose, onSubmit, groupName }: Invi
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
-      <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-lg mx-auto">
-        <Card className="shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !isSubmitting) {
+          onClose()
+        }
+      }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-lg mx-auto" ref={modalRef}>
+        <Card className="shadow-2xl" onClick={(event) => event.stopPropagation()}>
           <div className="flex items-center justify-between p-4 border-b border-border bg-card rounded-t-xl">
             <div>
               <p className="text-xs text-muted-foreground">Invite to {groupName || "group"}</p>
@@ -96,6 +147,7 @@ export function InviteMemberModal({ isOpen, onClose, onSubmit, groupName }: Invi
                     placeholder="member@example.com"
                     className="w-full pl-9 pr-3 py-3 rounded-lg bg-input border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     disabled={isSubmitting}
+                    ref={emailInputRef}
                     required
                   />
                 </div>
@@ -140,7 +192,7 @@ export function InviteMemberModal({ isOpen, onClose, onSubmit, groupName }: Invi
 
               {error && <p className="text-sm text-danger" role="alert">{error}</p>}
 
-              <Button type="submit" className="w-full h-11" disabled={isSubmitting || !isValidEmail}>
+              <Button type="submit" className="w-full h-11" disabled={isSubmitting || !isEmailValid}>
                 {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
                 {isSubmitting ? "Sending..." : "Send invite"}
               </Button>

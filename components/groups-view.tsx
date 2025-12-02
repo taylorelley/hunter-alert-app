@@ -55,7 +55,8 @@ export function GroupsView() {
     groupId?: string | null
     geofence?: Geofence | null
   } | null>(null)
-  const [invitationActionId, setInvitationActionId] = useState<string | null>(null)
+  const [incomingInvitationActionId, setIncomingInvitationActionId] = useState<string | null>(null)
+  const [outgoingInvitationActionId, setOutgoingInvitationActionId] = useState<string | null>(null)
   const [geofenceActionId, setGeofenceActionId] = useState<string | null>(null)
 
   const filteredGeofences = useMemo(() => {
@@ -136,38 +137,38 @@ export function GroupsView() {
   }
 
   const handleInvitationResponse = async (invitationId: string, decision: "accept" | "decline") => {
-    setInvitationActionId(invitationId)
+    setIncomingInvitationActionId(invitationId)
     try {
       await respondToInvitation(invitationId, decision)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not update the invitation. Please try again."
       toast.error(message)
     } finally {
-      setInvitationActionId(null)
+      setIncomingInvitationActionId(null)
     }
   }
 
   const handleResendInvitation = async (invitationId: string) => {
-    setInvitationActionId(invitationId)
+    setOutgoingInvitationActionId(invitationId)
     try {
       await resendGroupInvitation(invitationId)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not resend the invite. Please try again."
       toast.error(message)
     } finally {
-      setInvitationActionId(null)
+      setOutgoingInvitationActionId(null)
     }
   }
 
   const handleWithdrawInvitation = async (invitationId: string) => {
-    setInvitationActionId(invitationId)
+    setOutgoingInvitationActionId(invitationId)
     try {
       await withdrawGroupInvitation(invitationId)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not withdraw the invite. Please try again."
       toast.error(message)
     } finally {
-      setInvitationActionId(null)
+      setOutgoingInvitationActionId(null)
     }
   }
 
@@ -360,7 +361,7 @@ export function GroupsView() {
                           </div>
                           <div className="space-y-2">
                             {groupOutgoingInvites.map((invite) => {
-                              const isProcessing = invitationActionId === invite.id
+                              const isProcessing = outgoingInvitationActionId === invite.id
 
                               return (
                                 <div
@@ -608,35 +609,35 @@ export function GroupsView() {
         {/* Invitations */}
         {pendingInvitations.length > 0 && (
           <div className="space-y-2">
-          {pendingInvitations.map((invite) => {
-            const groupName = groups.find((group) => group.id === invite.groupId)?.name || invite.groupId
-            const isProcessing = invitationActionId === invite.id
+            {pendingInvitations.map((invite) => {
+              const groupName = groups.find((group) => group.id === invite.groupId)?.name || invite.groupId
+              const isProcessing = incomingInvitationActionId === invite.id
 
-            return (
-              <Card key={invite.id} className="border-accent/30">
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-full bg-accent/20">
-                      <UserPlus className="w-5 h-5 text-accent" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold">Pending Invitation</h3>
-                      <p className="text-sm text-muted-foreground mt-1">You've been invited to join {groupName}</p>
-                      <div className="flex gap-2 mt-3">
-                        <Button
-                          size="sm"
-                          onClick={() => handleInvitationResponse(invite.id, "accept")}
-                          disabled={isProcessing}
-                        >
-                          {isProcessing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
-                          Accept
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleInvitationResponse(invite.id, "decline")}
-                          disabled={isProcessing}
-                        >
+              return (
+                <Card key={invite.id} className="border-accent/30">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-full bg-accent/20">
+                        <UserPlus className="w-5 h-5 text-accent" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold">Pending Invitation</h3>
+                        <p className="text-sm text-muted-foreground mt-1">You've been invited to join {groupName}</p>
+                        <div className="flex gap-2 mt-3">
+                          <Button
+                            size="sm"
+                            onClick={() => handleInvitationResponse(invite.id, "accept")}
+                            disabled={isProcessing}
+                          >
+                            {isProcessing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+                            Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleInvitationResponse(invite.id, "decline")}
+                            disabled={isProcessing}
+                          >
                           {isProcessing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
                           Decline
                         </Button>

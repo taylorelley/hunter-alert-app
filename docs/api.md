@@ -60,6 +60,44 @@ Returns recent changes for the authenticated user in a single JSON payload.
 - Maximum rows per collection: `app.max_pull_limit` (defaults to 100; configurable via `BACKEND_MAX_PULL_LIMIT`).
 - Access restricted to conversations where `auth.uid()` is a participant and to the caller’s own sync cursors.
 
+## RPC: `resend_group_invitation(invitation_id uuid)`
+Marks a pending invitation as resent by updating its metadata. Only the original sender can resend.
+
+**Behavior**
+- Validates the caller is authenticated and the invitation exists.
+- Verifies `auth.uid()` matches `sender_id` before updating `metadata.resent_at`.
+- Returns the full `group_invitations` row after the update.
+
+## RPC: `withdraw_group_invitation(invitation_id uuid)`
+Allows an invitation sender to withdraw a pending invite.
+
+**Behavior**
+- Requires authentication and that the caller is the original sender.
+- Rejects non-pending invitations with a descriptive error.
+- Sets `status` to `declined` and merges `metadata.withdrawn_by_sender: true`.
+- Returns the updated `group_invitations` row.
+
+## RPC: `update_geofence(...)`
+Updates a geofence owned by the authenticated user and records group activity when applicable.
+
+**Request payload**
+```json
+{
+  "geofence_id": "uuid",
+  "geofence_name": "Boundary name",
+  "latitude": 39.7392,
+  "longitude": -104.9903,
+  "radius_meters": 750,
+  "geofence_description": "Optional notes"
+}
+```
+
+**Behavior**
+- Ensures the caller owns the geofence via `user_id` check.
+- Updates the name, description, coordinates, and radius in one transaction.
+- When linked to a group, appends a `geofence` entry to `group_activity` for auditability.
+- Returns the updated `geofences` row.
+
 ## Error handling
 - Requests without a valid JWT fail with `Authentication is required`.
 - Violating batch limits raises descriptive errors (e.g., exceeding message count or body size).

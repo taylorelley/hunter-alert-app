@@ -1,10 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, MapPin, Ruler, Shield, X } from "lucide-react"
+import { Loader2, MapPin, Navigation2, Ruler, Shield, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
+import { getCurrentPosition } from "@/lib/geolocation"
+import { validateGeofenceParams } from "@/lib/validation"
 
 interface GeofenceFormModalProps {
   isOpen: boolean
@@ -36,6 +39,7 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
   const [description, setDescription] = useState(initialValues?.description || "")
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLocating, setIsLocating] = useState(false)
 
   useEffect(() => {
     if (isOpen && initialValues) {
@@ -60,13 +64,28 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
   if (!isOpen) return null
 
   const validate = () => {
-    const trimmedName = name.trim()
-    if (!trimmedName) return "Geofence name is required"
-    if (Number.isNaN(latitude) || latitude < -90 || latitude > 90) return "Latitude must be between -90 and 90"
-    if (Number.isNaN(longitude) || longitude < -180 || longitude > 180) return "Longitude must be between -180 and 180"
-    if (!Number.isFinite(radiusMeters) || radiusMeters <= 0 || radiusMeters > 100000)
-      return "Radius must be between 1 and 100000 meters"
-    return null
+    return validateGeofenceParams({
+      name,
+      latitude,
+      longitude,
+      radiusMeters,
+    })
+  }
+
+  const handleUseCurrentLocation = async () => {
+    setError(null)
+    setIsLocating(true)
+    try {
+      const position = await getCurrentPosition()
+      setLatitude(position.latitude)
+      setLongitude(position.longitude)
+    } catch (locationError) {
+      const message =
+        locationError instanceof Error ? locationError.message : "Could not get current location"
+      setError(message)
+    } finally {
+      setIsLocating(false)
+    }
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -145,8 +164,11 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
                     <input
                       id="geofence-latitude"
                       type="number"
-                      value={latitude}
-                      onChange={(event) => setLatitude(Number(event.target.value))}
+                      value={Number.isNaN(latitude) ? "" : latitude}
+                      onChange={(event) => {
+                        const val = event.target.value
+                        setLatitude(val === "" ? NaN : parseFloat(val))
+                      }}
                       step="0.0001"
                       min={-90}
                       max={90}
@@ -164,8 +186,11 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
                     <input
                       id="geofence-longitude"
                       type="number"
-                      value={longitude}
-                      onChange={(event) => setLongitude(Number(event.target.value))}
+                      value={Number.isNaN(longitude) ? "" : longitude}
+                      onChange={(event) => {
+                        const val = event.target.value
+                        setLongitude(val === "" ? NaN : parseFloat(val))
+                      }}
                       step="0.0001"
                       min={-180}
                       max={180}
@@ -185,8 +210,11 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
                   <input
                     id="geofence-radius"
                     type="number"
-                    value={radiusMeters}
-                    onChange={(event) => setRadiusMeters(Number(event.target.value))}
+                    value={Number.isNaN(radiusMeters) ? "" : radiusMeters}
+                    onChange={(event) => {
+                      const val = event.target.value
+                      setRadiusMeters(val === "" ? NaN : parseFloat(val))
+                    }}
                     min={1}
                     max={100000}
                     step={10}
@@ -209,6 +237,21 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
                   disabled={isSubmitting}
                 />
               </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className={cn("w-full h-11", (isSubmitting || isLocating) && "opacity-70")}
+                onClick={handleUseCurrentLocation}
+                disabled={isSubmitting || isLocating}
+              >
+                {isLocating ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Navigation2 className="w-4 h-4 mr-2" />
+                )}
+                {isLocating ? "Locating..." : "Use current location"}
+              </Button>
 
               {error && <p className="text-sm text-danger" role="alert">{error}</p>}
 

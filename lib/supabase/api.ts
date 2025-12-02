@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { appConfig } from '@/lib/config/env';
 import { MAX_MESSAGE_BYTES } from '@/lib/config/constants';
+import { isValidEmail, validateGeofenceParams } from '@/lib/validation';
 import {
   AuthResult,
   MessageDraft,
@@ -338,7 +339,7 @@ export async function inviteToGroup(
     throw new Error('Invitation email is required');
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+  if (!isValidEmail(normalizedEmail)) {
     throw new Error('Invalid email format');
   }
 
@@ -381,24 +382,9 @@ export async function resendGroupInvitation(
     throw new Error('Cannot resend invitation without an active session');
   }
 
-  const { data: existingMetadata, error: fetchError } = await client
-    .from('group_invitations')
-    .select('metadata')
-    .eq('id', invitationId)
-    .single();
-
-  if (fetchError) {
-    throw fetchError;
-  }
-
-  const metadata = (existingMetadata?.metadata as Record<string, unknown> | null) ?? {};
-
-  const { data, error } = await client
-    .from('group_invitations')
-    .update({ metadata: { ...metadata, resent_at: new Date().toISOString() } })
-    .eq('id', invitationId)
-    .select()
-    .single();
+  const { data, error } = await client.rpc('resend_group_invitation', {
+    invitation_id: invitationId,
+  });
 
   if (error) {
     throw error;
@@ -416,24 +402,9 @@ export async function withdrawGroupInvitation(
     throw new Error('Cannot withdraw invitation without an active session');
   }
 
-  const { data: existingMetadata, error: fetchError } = await client
-    .from('group_invitations')
-    .select('metadata')
-    .eq('id', invitationId)
-    .single();
-
-  if (fetchError) {
-    throw fetchError;
-  }
-
-  const metadata = (existingMetadata?.metadata as Record<string, unknown> | null) ?? {};
-
-  const { data, error } = await client
-    .from('group_invitations')
-    .update({ status: 'declined', metadata: { ...metadata, withdrawn_by_sender: true } })
-    .eq('id', invitationId)
-    .select()
-    .single();
+  const { data, error } = await client.rpc('withdraw_group_invitation', {
+    invitation_id: invitationId,
+  });
 
   if (error) {
     throw error;
@@ -509,24 +480,19 @@ export async function createGeofence(
   },
 ): Promise<Geofence> {
   // Client-side validation
-  if (!params.name.trim()) {
-    throw new Error('Geofence name cannot be empty');
-  }
-  if (params.latitude < -90 || params.latitude > 90) {
-    throw new Error('Latitude must be between -90 and 90');
-  }
-  if (params.longitude < -180 || params.longitude > 180) {
-    throw new Error('Longitude must be between -180 and 180');
-  }
-  if (
-    params.radiusMeters !== undefined &&
-    (params.radiusMeters <= 0 || params.radiusMeters > 100000)
-  ) {
-    throw new Error('Radius must be between 1 and 100000 meters');
+  const validationError = validateGeofenceParams({
+    name: params.name,
+    latitude: params.latitude,
+    longitude: params.longitude,
+    radiusMeters: params.radiusMeters ?? 500,
+  });
+
+  if (validationError) {
+    throw new Error(validationError);
   }
 
   const { data, error } = await client.rpc('create_geofence', {
-    geofence_name: params.name,
+    geofence_name: params.name.trim(),
     latitude: params.latitude,
     longitude: params.longitude,
     radius_meters: params.radiusMeters ?? 500,
@@ -577,33 +543,25 @@ export async function updateGeofence(
     throw new Error('Cannot update geofence without an active session');
   }
 
-  const trimmedName = params.name.trim();
+  const validationError = validateGeofenceParams({
+    name: params.name,
+    latitude: params.latitude,
+    longitude: params.longitude,
+    radiusMeters: params.radiusMeters,
+  });
 
-  if (!trimmedName) {
-    throw new Error('Geofence name cannot be empty');
-  }
-  if (params.latitude < -90 || params.latitude > 90) {
-    throw new Error('Latitude must be between -90 and 90');
-  }
-  if (params.longitude < -180 || params.longitude > 180) {
-    throw new Error('Longitude must be between -180 and 180');
-  }
-  if (params.radiusMeters <= 0 || params.radiusMeters > 100000) {
-    throw new Error('Radius must be between 1 and 100000 meters');
+  if (validationError) {
+    throw new Error(validationError);
   }
 
-  const { data, error } = await client
-    .from('geofences')
-    .update({
-      name: trimmedName,
-      description: params.description ?? null,
-      latitude: params.latitude,
-      longitude: params.longitude,
-      radius_meters: params.radiusMeters,
-    })
-    .eq('id', params.geofenceId)
-    .select()
-    .single();
+  const { data, error } = await client.rpc('update_geofence', {
+    geofence_id: params.geofenceId,
+    geofence_name: params.name.trim(),
+    geofence_description: params.description ?? null,
+    latitude: params.latitude,
+    longitude: params.longitude,
+    radius_meters: params.radiusMeters,
+  });
 
   if (error) {
     throw error;
