@@ -98,6 +98,7 @@ describe('myFunction', () => {
 
 ### ✅ Always Do
 
+- **Run complete CI checks before committing** - lint, test, and build must all pass
 - Add `"use client"` directive to components with hooks/interactivity
 - Wrap API calls in try-catch with proper error handling
 - Use TypeScript with explicit types (avoid `any`)
@@ -122,6 +123,7 @@ describe('myFunction', () => {
 
 ### 🚫 Never Do
 
+- **Commit code that fails lint, test, or build** - all CI checks must pass
 - Commit `.env` or `.env.local` files
 - Hard-code API keys or secrets
 - Bypass Supabase RLS policies
@@ -222,6 +224,48 @@ pnpm test offline.stateMachine
 - API wrappers with mocked Supabase client
 - Offline queue persistence
 
+## Pre-Commit Checklist (CRITICAL)
+
+**Before every commit, run the complete CI workflow and fix all issues:**
+
+```bash
+# Step 1: Run linter (auto-fix enabled)
+pnpm lint
+
+# Step 2: Run all tests
+pnpm test
+
+# Step 3: Run production build
+pnpm build
+
+# If any command fails, fix the issues before committing
+# Do not commit until all three commands succeed
+```
+
+**Workflow:**
+1. Make your code changes
+2. Run `pnpm lint` → Fix any linting errors
+3. Run `pnpm test` → Fix any failing tests
+4. Run `pnpm build` → Fix any build errors
+5. Only after all checks pass: `git add` and `git commit`
+
+**Example:**
+```bash
+# After making changes
+pnpm lint && pnpm test && pnpm build
+
+# If all pass, commit
+git add .
+git commit -m "Add feature X"
+git push
+```
+
+**If checks fail:**
+- Read error messages carefully
+- Fix the specific issues reported
+- Re-run the failed check to verify
+- Continue from that step
+
 ## Common Workflows
 
 ### Add New Feature Component
@@ -231,6 +275,7 @@ pnpm test offline.stateMachine
 3. Use existing patterns (reference similar components)
 4. Test with offline mode (DevTools → Network → Offline)
 5. Add tests if complex logic
+6. **Run `pnpm lint && pnpm test && pnpm build`** before committing
 
 ### Add New RPC Function
 
@@ -239,6 +284,7 @@ pnpm test offline.stateMachine
 3. Add types to `lib/supabase/types.ts`
 4. Update `docs/api.md`
 5. Add tests to `__tests__/supabase.api.test.ts`
+6. **Run `pnpm lint && pnpm test && pnpm build`** before committing
 
 ### Modify Network Behavior
 
@@ -246,6 +292,7 @@ pnpm test offline.stateMachine
 2. Adjust sync timing in `lib/sync/use-sync-engine.ts`
 3. Update `docs/network-modes.md`
 4. Test all three modes (offline, satellite, normal)
+5. **Run `pnpm lint && pnpm test && pnpm build`** before committing
 
 ## Build for Production
 
