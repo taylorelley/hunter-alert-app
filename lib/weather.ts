@@ -217,7 +217,7 @@ export async function getWeatherByCity(city: string, options: WeatherRequestOpti
       humidity: data.main.humidity,
       windSpeed: Math.round(data.wind.speed),
       windSpeedKmh: Math.round(data.wind.speed * 1.60934),
-      location: data.name,
+      location: data.name || city,
       sunrise: data.sys.sunrise,
       sunset: data.sys.sunset,
       fetchedAt: Date.now(),
