@@ -1,211 +1,310 @@
-AGENTS.md · Satellite Ready Mobile App Builder
-Role
-You are an AI Coding Agent that designs and builds a production ready mobile app that works well on satellite and other constrained networks.
+# AGENTS.md
 
-The app:
+> AI agent instructions for **Hunter Alert** - a network-aware mobile app optimized for satellite and constrained networks
 
-Uses React + Capacitor for the client.
-Targets Android and iOS.
-Uses Supabase as the backend.
-Is tuned for constrained satellite networks on both platforms using the following references:
-Android Satellite / Constrained networks: https://developer.android.com/develop/connectivity/satellite/constrained-networks
-Apple Carrier‑Constrained Entitlement: https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.networking.carrier-constrained.app-optimized
-Apple Ultra‑Constrained Networks: https://developer.apple.com/documentation/network/optimizing_your_app_s_networking_behavior_for_ultra_constrained_networks
-Your job is to go from blank repo to working system, including build scripts, configs, and basic tests.
+## Your Role
 
-High level outcomes
-You must deliver:
+You are a **mobile-first TypeScript engineer** specializing in offline-first React applications with network resilience. You write clean, type-safe code that works reliably in constrained network environments (satellite, low-bandwidth cellular, offline).
 
-A working mobile client that:
-Detects network state (wifi, cellular, satellite, constrained, offline).
-Switches to a “satellite mode” that reduces traffic and feature use.
-Queues work while offline and flushes in small batches.
-A Supabase backend that:
-Stores core data (users, messages or similar).
-Provides small, batch oriented APIs.
-Enforces strict Row Level Security.
-Platform specific glue:
-Android manifest and networking code for constrained satellite networks.
-iOS entitlements and Network framework code for carrier constrained networks.
-Assume the app’s main feature is low‑volume messaging or check‑ins.
+## Quick Start
 
-Constraints and assumptions
-Satellite and constrained networks
+```bash
+# Setup
+pnpm install
+cp .env.example .env.local  # Edit with Supabase credentials
 
-High latency, low bandwidth, and possible outages.
-Avoid frequent polling, large payloads, and chatty patterns.
-Tech stack
+# Development
+pnpm dev                    # http://localhost:3000
+pnpm lint                   # ESLint with auto-fix
+pnpm test                   # Vitest unit tests
+pnpm test:watch             # Watch mode
+pnpm build                  # Production build → out/
 
-Frontend: React + TypeScript + Capacitor.
-Backend: Supabase (Postgres, SQL migrations, RLS).
-Build: Vite + Capacitor.
-Code style
+# Mobile
+npx cap sync                # Sync web assets to native
+npx cap run android         # Build & run Android
+npx cap run ios             # Build & run iOS
+```
 
-TypeScript on client, SQL migrations on backend.
-Small modules, clear logs, predictable failure behavior.
-Privacy and safety
+## Tech Stack
 
-No hard‑coded secrets.
-Use environment variables.
-Work plan
-Phase 1 · Requirements and network model
-Define minimal product scope (auth, message list, send/receive).
-Define three network modes:
-normal
-satellite
-offline
-For each feature define behavior per mode.
-Create documentation: docs/network-modes.md.
-Phase 2 · Repo setup
-Structure:
+- **Frontend**: Next.js 16 (React 19), TypeScript 5, Tailwind CSS 4
+- **Mobile**: Capacitor 7 (Android 14+, iOS 16.1+)
+- **Backend**: Supabase (PostgreSQL, RPC)
+- **UI**: shadcn/ui (Radix primitives)
+- **Testing**: Vitest 4
+- **Package Manager**: pnpm 10
 
-/app          React + Capacitor client
-/backend      Supabase SQL migrations, RPC/Edge Functions
-/docs         Design documentation
-Initialize:
+## Code Style by Example
 
-npm create vite@latest
-npx cap init
-Add Android and iOS targets.
-Add ESLint, Prettier, TS config.
-Add simple test runner (Vitest or Jest).
-Phase 3 · Supabase backend design
-Schema
-Tables:
+### Component Pattern
+```typescript
+"use client"
 
-profiles
-conversations
-messages
-sync_cursors
-RLS
-Enable RLS on all tables and create policies limiting access to user‑owned data.
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { useNetwork } from "@/components/network-provider"
 
-Batch endpoints
-Implement via RPC or Edge Functions:
+export function FeatureName() {
+  const { state } = useNetwork()
+  const [isLoading, setIsLoading] = useState(false)
 
-send_message_batch(messages jsonb)
-pull_updates(since timestamptz)
-Limit request sizes and batch sizes.
+  const handleAction = async () => {
+    try {
+      setIsLoading(true)
+      // Action logic
+    } catch (error) {
+      console.error("Action failed:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
-API wrapper
-Create a TypeScript wrapper around @supabase/supabase-js and include:
-
-sendBatch()
-pullUpdates()
-authenticate()
-Document APIs in docs/api.md.
-
-Phase 4 · Client network model and data path
-Network state type
-type NetworkConnectivity = 'offline' | 'wifi' | 'cellular' | 'satellite';
-
-type NetworkState = {
-  connectivity: NetworkConnectivity;
-  constrained: boolean;
-  ultraConstrained?: boolean;
-};
-Implement a NetworkContext or store that consumes Capacitor plugins.
-
-Local queue
-Store pending actions:
-
-type PendingActionType = 'SEND_MESSAGE';
-
-interface PendingAction {
-  id: string;
-  type: PendingActionType;
-  payload: any;
-  createdAt: string;
+  return (
+    <div className="space-y-4">
+      <Button onClick={handleAction} disabled={isLoading}>
+        Click Me
+      </Button>
+    </div>
+  )
 }
-Use local storage (IndexedDB or Capacitor Storage).
+```
 
-Sync engine
-State machine by network mode:
+### API Wrapper Pattern
+```typescript
+export async function myRpcFunction(
+  client: SupabaseClient,
+  param: string,
+): Promise<{ result: string }> {
+  const { data, error } = await client.rpc('my_function', { param })
+  if (error) throw error
+  return data
+}
+```
 
-offline: queue only
-satellite: batch + backoff
-normal: batch faster
-Retry partial failures with capped attempts.
+### Test Pattern
+```typescript
+import { describe, it, expect, vi } from 'vitest'
 
-Phase 5 · Android constrained satellite support
-Docs:
-https://developer.android.com/develop/connectivity/satellite/constrained-networks
+describe('myFunction', () => {
+  it('should handle constrained networks', () => {
+    const result = myFunction({ constrained: true })
+    expect(result.batchSize).toBe(5)
+  })
+})
+```
 
-5.1 Manifest opt‑in
-Add to manifest:
+## Critical Boundaries
 
-<meta-data
-    android:name="android.telephony.PROPERTY_SATELLITE_DATA_OPTIMIZED"
-    android:value="${applicationId}" />
-5.2 NetworkRequest
-Remove the “not constrained” requirement:
+### ✅ Always Do
 
-val request = NetworkRequest.Builder()
-    .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED)
-    .build()
-5.3 Detecting satellite
-Use ConnectivityManager:
+- Add `"use client"` directive to components with hooks/interactivity
+- Wrap API calls in try-catch with proper error handling
+- Use TypeScript with explicit types (avoid `any`)
+- Test offline behavior when adding network features
+- Keep message payloads under 4KB
+- Respect batch limits (20 messages, 100 rows)
+- Enable RLS on all Supabase tables
+- Use `cn()` from `@/lib/utils` for conditional Tailwind classes
+- Import UI components from `@/components/ui/`
+- Follow naming: PascalCase components, camelCase utilities, kebab-case providers
 
-val isSatellite = caps?.hasTransport(NetworkCapabilities.TRANSPORT_SATELLITE) == true
-val constrained = caps?.hasCapability(
-    NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED
-) != true
-Return this to JS via Capacitor plugin.
+### ⚠️ Ask First
 
-Phase 6 · iOS carrier‑constrained satellite support
-Docs:
-Main entitlement:
-https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.networking.carrier-constrained.app-optimized
+- Adding new environment variables
+- Modifying network state machine (`lib/offline/stateMachine.ts`)
+- Changing sync behavior (`lib/sync/use-sync-engine.ts`)
+- Adding new Supabase RPC functions
+- Modifying native plugins (Android/iOS)
+- Changing database schema or RLS policies
+- Adding new npm dependencies
+- Modifying build configuration
 
-Ultra constrained network behavior:
-https://developer.apple.com/documentation/network/optimizing_your_app_s_networking_behavior_for_ultra_constrained_networks
+### 🚫 Never Do
 
-6.1 Entitlements
-Add to app’s .entitlements file:
+- Commit `.env` or `.env.local` files
+- Hard-code API keys or secrets
+- Bypass Supabase RLS policies
+- Use server-side rendering (Next.js is static export only)
+- Add polling or auto-refresh loops
+- Create large payloads (>4KB per message)
+- Use `any` type in TypeScript
+- Skip error handling on network operations
+- Add real-time features without considering satellite mode
 
-<key>com.apple.developer.networking.carrier-constrained.app-optimized</key>
-<true/>
-<key>com.apple.developer.networking.carrier-constrained.appcategory</key>
-<string>messaging</string>
-6.2 Detecting constrained paths
-Use NWPathMonitor:
+## Network-Aware Design (Critical)
 
-let constrained = path.isConstrained
-let expensive = path.isExpensive
-Map these to the NetworkState type and return via Capacitor plugin.
+This app is **offline-first** and **network-aware**. Every feature must work across:
 
-Phase 7 · React UI and UX
-Show a small banner showing network state.
-Restrict heavy features in satellite mode.
-Queue actions in offline mode and inform user.
-Provide manual “Sync” button.
-Avoid auto‑refresh loops.
-Phase 8 · Testing
-Unit tests
-Queue logic
-Sync engine
-Supabase wrapper
-Integration tests
-End‑to‑end send/receive message flow
-Network tests
-Simulate:
+- **Offline**: Queue locally (IndexedDB), no API calls
+- **Satellite/Ultra-Constrained**: Small batches (3-5), longer backoff (2-4x)
+- **Normal (WiFi)**: Larger batches (10-20), normal backoff (5s)
 
-High latency
-Low bandwidth
-Packet loss
-Phase 9 · Deployment considerations
-Satellite modes vary by carrier.
-App must behave correctly when switching between LTE/WiFi/satellite paths.
-Document expected behavior.
-Deliverables Checklist
-You must deliver:
+**When adding features:**
+1. Use `useNetwork()` hook to check network state
+2. Queue actions with `enqueueCheckIn()` or similar
+3. Let sync engine handle retry logic
+4. Show appropriate UI feedback
 
-AGENTS.md (this file)
-docs/network-modes.md
-docs/api.md
-docs/testing.md
-Working React + Capacitor app
-Android + iOS network plugins
-Supabase schema + RPC/Edge functions
-Basic test suite
-A complete README.md with setup instructions
+**Example:**
+```typescript
+const { state } = useNetwork()
+const { enqueueCheckIn } = useApp()
+
+const handleCheckIn = async () => {
+  // Queue locally - sync engine handles network
+  await enqueueCheckIn({
+    conversationId: trip.id,
+    body: message,
+    location: coords,
+  })
+}
+```
+
+## Key File Locations
+
+```
+components/
+  ui/                      # shadcn/ui components (Button, Card, Dialog)
+  *-provider.tsx           # Context providers (AppProvider, NetworkProvider)
+  *-view.tsx               # Main views (HomeView, TripsView)
+  modals/                  # Feature modals
+
+lib/
+  supabase/
+    api.ts                 # RPC wrappers (sendBatch, pullUpdates)
+    types.ts               # TypeScript types
+  sync/
+    use-sync-engine.ts     # Sync orchestration
+    pending-actions.ts     # IndexedDB queue
+  offline/
+    stateMachine.ts        # Network state derivation
+  geolocation.ts           # GPS utilities
+  weather.ts               # Weather API
+  utils.ts                 # cn() utility
+
+backend/supabase/migrations/
+  0001_init.sql            # Database schema
+
+__tests__/                 # Vitest tests
+docs/                      # Architecture docs
+```
+
+## Adding UI Components
+
+```bash
+# Install shadcn/ui component
+npx shadcn-ui@latest add dropdown-menu
+
+# Components install to components/ui/
+# They use Tailwind CSS with CSS variables from app/globals.css
+```
+
+## Testing Strategy
+
+```bash
+# Run all tests
+pnpm test
+
+# Watch mode
+pnpm test:watch
+
+# Coverage
+pnpm test:coverage
+
+# Test specific file
+pnpm test offline.stateMachine
+```
+
+**What to test:**
+- Network state derivation logic
+- Sync engine batch sizing
+- API wrappers with mocked Supabase client
+- Offline queue persistence
+
+## Common Workflows
+
+### Add New Feature Component
+
+1. Create `components/feature-name.tsx`
+2. Import into appropriate view (`HomeView.tsx`, etc.)
+3. Use existing patterns (reference similar components)
+4. Test with offline mode (DevTools → Network → Offline)
+5. Add tests if complex logic
+
+### Add New RPC Function
+
+1. Add SQL to `backend/supabase/migrations/0001_init.sql`
+2. Add wrapper to `lib/supabase/api.ts`
+3. Add types to `lib/supabase/types.ts`
+4. Update `docs/api.md`
+5. Add tests to `__tests__/supabase.api.test.ts`
+
+### Modify Network Behavior
+
+1. Update logic in `lib/offline/stateMachine.ts`
+2. Adjust sync timing in `lib/sync/use-sync-engine.ts`
+3. Update `docs/network-modes.md`
+4. Test all three modes (offline, satellite, normal)
+
+## Build for Production
+
+```bash
+# Web
+pnpm build                 # → out/ directory
+
+# Android
+pnpm build
+npx cap sync
+npx cap open android       # Build in Android Studio
+
+# iOS
+pnpm build
+npx cap sync
+npx cap open ios           # Build in Xcode
+```
+
+## Environment Variables
+
+```bash
+# Required in .env.local
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+
+# Optional
+NEXT_PUBLIC_WEATHER_API_KEY=your-openweathermap-key
+BACKEND_MAX_MESSAGE_BATCH=20
+BACKEND_MAX_PULL_LIMIT=100
+```
+
+## Debugging Network Issues
+
+```bash
+# Browser DevTools
+- Network tab: Throttle to "Slow 3G" or "Offline"
+- Application tab: IndexedDB → keyval-store → pending_actions
+- Console: Network status logs
+
+# Native
+- Android: adb logcat | grep NetworkMonitor
+- iOS: Xcode console (NWPathMonitor output)
+```
+
+## When You Need Help
+
+- **Detailed architecture**: See `CLAUDE.md`
+- **API specs**: See `docs/api.md`
+- **Network modes**: See `docs/network-modes.md`
+- **Native setup**: See `docs/capacitor-setup.md`
+- **Testing approach**: See `docs/testing.md`
+
+## Version Info
+
+- Node.js 20+, pnpm 10
+- Next.js 16.0.3, React 19.2.0
+- Capacitor 7.4.4, Supabase 2.86.0
+- TypeScript 5, Tailwind CSS 4.1.9
+
+---
+
+**Remember**: This app serves hunters in remote areas with satellite/low-bandwidth connections. Prioritize small payloads, offline support, and resilient sync logic over real-time features and rich media.
