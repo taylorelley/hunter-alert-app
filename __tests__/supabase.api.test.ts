@@ -1,6 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import { appConfig } from '../lib/config/env';
-import { authenticate, listDeviceSessions, pullUpdates, recordDeviceSession, revokeDeviceSession, sendBatch } from '../lib/supabase/api';
+import {
+  authenticate,
+  beginSmsVerification,
+  confirmSmsVerification,
+  listDeviceSessions,
+  pullUpdates,
+  recordDeviceSession,
+  resendGroupInvitation,
+  revokeDeviceSession,
+  sendBatch,
+  togglePushSubscription,
+  upsertPushSubscription,
+  withdrawGroupInvitation,
+} from '../lib/supabase/api';
 import { MessageDraft } from '../lib/supabase/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -8,11 +21,16 @@ describe('supabase api wrapper', () => {
   const mockClient = () => {
     const rpc = vi.fn();
     const order = vi.fn().mockResolvedValue({ data: [], error: null });
-    const select = vi.fn(() => ({ order }));
-    const from = vi.fn(() => ({ select }));
+    const single = vi.fn().mockResolvedValue({ data: {}, error: null });
+    const select = vi.fn(() => ({ order, single }));
+    const eq = vi.fn(() => ({ select, single }));
+    const upsert = vi.fn(() => ({ select }));
+    const update = vi.fn(() => ({ select, eq }));
+    const from = vi.fn(() => ({ select, upsert, update, eq }));
     const auth = {
       signInWithPassword: vi.fn(),
-      getSession: vi.fn().mockResolvedValue({ data: { session: {} }, error: null }),
+      getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: 'user-1' } } }, error: null }),
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }),
     } as unknown as SupabaseClient['auth'];
     return { rpc, auth, from } as unknown as SupabaseClient;
   };
@@ -218,8 +236,8 @@ describe('supabase api wrapper', () => {
       { user_id: 'user-2', share_location: false },
       { user_id: 'user-3', share_location: true },
     ];
-    const push_subscriptions: unknown[] = [];
-    const sms_alert_subscriptions: unknown[] = [];
+    const push_subscriptions: unknown[] = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    const sms_alert_subscriptions: unknown[] = [{ id: 'sms-1' }, { id: 'sms-2' }, { id: 'sms-3' }];
     (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         conversations,
@@ -252,9 +270,85 @@ describe('supabase api wrapper', () => {
       profiles,
       device_sessions: device_sessions.slice(0, 2),
       privacy_settings: privacy_settings.slice(0, 2),
-      push_subscriptions,
-      sms_alert_subscriptions,
+      push_subscriptions: push_subscriptions.slice(0, 2),
+      sms_alert_subscriptions: sms_alert_subscriptions.slice(0, 2),
     });
+  });
+
+  it('resends and withdraws invitations with an active session', async () => {
+    const client = mockClient();
+    (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { id: 'invite-1' }, error: null });
+
+    const resent = await resendGroupInvitation(client, 'invite-1');
+    expect(client.rpc).toHaveBeenCalledWith('resend_group_invitation', { invitation_id: 'invite-1' });
+    expect(resent).toEqual({ id: 'invite-1' });
+
+    const withdrawn = await withdrawGroupInvitation(client, 'invite-1');
+    expect(client.rpc).toHaveBeenCalledWith('withdraw_group_invitation', { invitation_id: 'invite-1' });
+    expect(withdrawn).toEqual({ id: 'invite-1' });
+  });
+
+  it('throws when resending or withdrawing invitations without a session', async () => {
+    const client = mockClient();
+    (client.auth.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: null }, error: null });
+
+    await expect(resendGroupInvitation(client, 'invite-1')).rejects.toThrow('Cannot resend invitation without an active session');
+    await expect(withdrawGroupInvitation(client, 'invite-1')).rejects.toThrow('Cannot withdraw invitation without an active session');
+  });
+
+  it('upserts and toggles push subscriptions after session verification', async () => {
+    const client = mockClient();
+    const tableApi = (client.from as unknown as ReturnType<typeof vi.fn>)();
+    tableApi.select().single.mockResolvedValueOnce({ data: { id: 'push-1' }, error: null });
+    tableApi.select().single.mockResolvedValueOnce({ data: { id: 'push-1', enabled: false }, error: null });
+
+    const upserted = await upsertPushSubscription(client, { token: 'token-1', platform: 'ios', environment: 'dev' });
+    expect((client.from as unknown as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('push_subscriptions');
+    expect(upserted).toEqual({ id: 'push-1' });
+
+    const toggled = await togglePushSubscription(client, 'push-1', false);
+    expect(toggled).toEqual({ id: 'push-1', enabled: false });
+  });
+
+  it('requires an active session for push subscription mutations', async () => {
+    const client = mockClient();
+    (client.auth.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: null }, error: null });
+
+    await expect(upsertPushSubscription(client, { token: 'token-1' })).rejects.toThrow(
+      'Cannot upsert push subscription without an active session',
+    );
+    await expect(togglePushSubscription(client, 'push-1', false)).rejects.toThrow(
+      'Cannot toggle push subscription without an active session',
+    );
+  });
+
+  it('begins and confirms SMS verification via RPC', async () => {
+    const client = mockClient();
+    (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { phone: '+10000000000' }, error: null });
+
+    const beginResult = await beginSmsVerification(client, { phone: '+10000000000', allowCheckIns: true });
+    expect(client.rpc).toHaveBeenCalledWith('begin_sms_verification', {
+      phone: '+10000000000',
+      allow_checkins: true,
+      allow_sos: true,
+    });
+    expect(beginResult).toEqual({ phone: '+10000000000' });
+
+    const confirmResult = await confirmSmsVerification(client, '123456');
+    expect(client.rpc).toHaveBeenCalledWith('confirm_sms_verification', { code: '123456' });
+    expect(confirmResult).toEqual({ phone: '+10000000000' });
+  });
+
+  it('requires authentication before SMS verification flows', async () => {
+    const client = mockClient();
+    (client.auth.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { session: null }, error: null });
+
+    await expect(beginSmsVerification(client, { phone: '+19999999999' })).rejects.toThrow(
+      'Authentication required to begin SMS verification',
+    );
+    await expect(confirmSmsVerification(client, '123456')).rejects.toThrow(
+      'Authentication required to confirm SMS verification',
+    );
   });
 
   it('throws when pull_updates returns an error', async () => {
