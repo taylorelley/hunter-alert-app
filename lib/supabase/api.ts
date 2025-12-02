@@ -376,6 +376,11 @@ export async function resendGroupInvitation(
   client: SupabaseClient,
   invitationId: string,
 ): Promise<GroupInvitation> {
+  const { data: sessionData } = await client.auth.getSession();
+  if (!sessionData?.session) {
+    throw new Error('Cannot resend invitation without an active session');
+  }
+
   const { data: existingMetadata, error: fetchError } = await client
     .from('group_invitations')
     .select('metadata')
@@ -406,6 +411,11 @@ export async function withdrawGroupInvitation(
   client: SupabaseClient,
   invitationId: string,
 ): Promise<GroupInvitation> {
+  const { data: sessionData } = await client.auth.getSession();
+  if (!sessionData?.session) {
+    throw new Error('Cannot withdraw invitation without an active session');
+  }
+
   const { data: existingMetadata, error: fetchError } = await client
     .from('group_invitations')
     .select('metadata')
@@ -562,6 +572,11 @@ export async function updateGeofence(
     description?: string;
   },
 ): Promise<Geofence> {
+  const { data: sessionData } = await client.auth.getSession();
+  if (!sessionData?.session) {
+    throw new Error('Cannot update geofence without an active session');
+  }
+
   const trimmedName = params.name.trim();
 
   if (!trimmedName) {

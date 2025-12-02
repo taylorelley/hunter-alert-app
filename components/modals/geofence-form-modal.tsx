@@ -38,14 +38,24 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    if (initialValues) {
+    if (isOpen && initialValues) {
       setName(initialValues.name)
       setLatitude(initialValues.latitude)
       setLongitude(initialValues.longitude)
       setRadiusMeters(initialValues.radiusMeters)
       setDescription(initialValues.description || "")
+    } else if (isOpen && !initialValues) {
+      setName("")
+      setLatitude(0)
+      setLongitude(0)
+      setRadiusMeters(500)
+      setDescription("")
     }
-  }, [initialValues])
+
+    if (isOpen) {
+      setError(null)
+    }
+  }, [isOpen, initialValues])
 
   if (!isOpen) return null
 
@@ -109,8 +119,11 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
           <CardContent className="p-4">
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Name</label>
+                <label htmlFor="geofence-name" className="text-sm font-medium">
+                  Name
+                </label>
                 <input
+                  id="geofence-name"
                   type="text"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
@@ -124,10 +137,13 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Latitude</label>
+                  <label htmlFor="geofence-latitude" className="text-sm font-medium">
+                    Latitude
+                  </label>
                   <div className="relative">
                     <MapPin className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
+                      id="geofence-latitude"
                       type="number"
                       value={latitude}
                       onChange={(event) => setLatitude(Number(event.target.value))}
@@ -140,10 +156,13 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Longitude</label>
+                  <label htmlFor="geofence-longitude" className="text-sm font-medium">
+                    Longitude
+                  </label>
                   <div className="relative">
                     <MapPin className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
+                      id="geofence-longitude"
                       type="number"
                       value={longitude}
                       onChange={(event) => setLongitude(Number(event.target.value))}
@@ -158,10 +177,13 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Radius (meters)</label>
+                <label htmlFor="geofence-radius" className="text-sm font-medium">
+                  Radius (meters)
+                </label>
                 <div className="relative">
                   <Ruler className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
+                    id="geofence-radius"
                     type="number"
                     value={radiusMeters}
                     onChange={(event) => setRadiusMeters(Number(event.target.value))}
@@ -175,8 +197,11 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Description (optional)</label>
+                <label htmlFor="geofence-description" className="text-sm font-medium">
+                  Description (optional)
+                </label>
                 <textarea
+                  id="geofence-description"
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   placeholder="Notes about this boundary..."

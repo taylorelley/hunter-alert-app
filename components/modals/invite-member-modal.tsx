@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AtSign, Loader2, Shield, UserPlus, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,14 @@ export function InviteMemberModal({ isOpen, onClose, onSubmit, groupName }: Invi
   const [role, setRole] = useState<"member" | "admin">("member")
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      setEmail("")
+      setRole("member")
+      setError(null)
+    }
+  }, [isOpen])
 
   const isValidEmail = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()), [email])
 
@@ -75,10 +83,13 @@ export function InviteMemberModal({ isOpen, onClose, onSubmit, groupName }: Invi
           <CardContent className="p-4">
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Recipient email</label>
+                <label htmlFor="invite-email" className="text-sm font-medium">
+                  Recipient email
+                </label>
                 <div className="relative">
                   <AtSign className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
+                    id="invite-email"
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
@@ -91,19 +102,30 @@ export function InviteMemberModal({ isOpen, onClose, onSubmit, groupName }: Invi
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Role</label>
+                <label htmlFor="invite-role-member" className="text-sm font-medium">
+                  Role
+                </label>
                 <div className="grid grid-cols-2 gap-3">
                   {["member", "admin"].map((option) => (
-                    <button
+                    <label
                       key={option}
-                      type="button"
-                      onClick={() => setRole(option as "member" | "admin")}
+                      htmlFor={`invite-role-${option}`}
                       className={cn(
-                        "flex items-center gap-2 p-3 rounded-lg border-2 text-left transition-all",
+                        "flex cursor-pointer items-center gap-2 p-3 rounded-lg border-2 text-left transition-all",
                         role === option ? "border-primary bg-primary/10" : "border-border hover:border-primary/50",
+                        isSubmitting && "cursor-not-allowed opacity-70",
                       )}
-                      disabled={isSubmitting}
                     >
+                      <input
+                        id={`invite-role-${option}`}
+                        name="invite-role"
+                        type="radio"
+                        value={option}
+                        checked={role === option}
+                        onChange={() => setRole(option as "member" | "admin")}
+                        className="sr-only"
+                        disabled={isSubmitting}
+                      />
                       <Shield className="w-4 h-4 text-muted-foreground" />
                       <div>
                         <p className="text-sm font-semibold capitalize">{option}</p>
@@ -111,7 +133,7 @@ export function InviteMemberModal({ isOpen, onClose, onSubmit, groupName }: Invi
                           {option === "admin" ? "Manage members & alerts" : "View and participate"}
                         </p>
                       </div>
-                    </button>
+                    </label>
                   ))}
                 </div>
               </div>

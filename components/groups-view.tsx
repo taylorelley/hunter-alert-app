@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useApp, type Geofence, type Group } from "./app-provider"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import { CreateGroupModal } from "./modals/create-group-modal"
 import { InviteMemberModal } from "./modals/invite-member-modal"
 import { GeofenceFormModal } from "./modals/geofence-form-modal"
@@ -54,11 +55,8 @@ export function GroupsView() {
     groupId?: string | null
     geofence?: Geofence | null
   } | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [inviteActionError, setInviteActionError] = useState<string | null>(null)
   const [invitationActionId, setInvitationActionId] = useState<string | null>(null)
   const [geofenceActionId, setGeofenceActionId] = useState<string | null>(null)
-  const [responseError, setResponseError] = useState<string | null>(null)
 
   const filteredGeofences = useMemo(() => {
     return selectedGroup ? geofences.filter((item) => item.groupId === selectedGroup) : geofences
@@ -68,30 +66,30 @@ export function GroupsView() {
     return selectedGroup ? groupActivity.filter((item) => item.groupId === selectedGroup) : groupActivity
   }, [groupActivity, selectedGroup])
 
-  const pendingInvitations = groupInvitations.filter((invite) => invite.status === "pending")
+  const pendingInvitations = useMemo(() => {
+    return groupInvitations.filter((invite) => invite.status === "pending")
+  }, [groupInvitations])
   const groupOutgoingInvites = useMemo(() => {
     return groupInvitations.filter((invite) => invite.groupId === selectedGroup)
   }, [groupInvitations, selectedGroup])
 
   const handleCreateGroupSubmit = async (payload: { name: string; description?: string }) => {
-    setActionError(null)
     try {
       await createGroup(payload.name, payload.description)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not create the group. Please try again."
-      setActionError(message)
+      toast.error(message)
       throw error
     }
   }
 
   const handleInviteSubmit = async (params: { email: string; role: "member" | "admin" }) => {
     if (!inviteModalGroup) return
-    setInviteActionError(null)
     try {
       await inviteToGroup(inviteModalGroup.id, params.email, params.role)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not send the invitation. Please try again."
-      setInviteActionError(message)
+      toast.error(message)
       throw error
     }
   }
@@ -107,7 +105,7 @@ export function GroupsView() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not update group membership. Please try again."
-      setActionError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -121,7 +119,6 @@ export function GroupsView() {
     description?: string
   }) => {
     if (!geofenceModalState) return
-    setActionError(null)
     try {
       if (geofenceModalState.mode === "edit" && geofenceModalState.geofence) {
         await updateGeofence(geofenceModalState.geofence.id, payload)
@@ -133,19 +130,18 @@ export function GroupsView() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not save the geofence. Please try again."
-      setActionError(message)
+      toast.error(message)
       throw error
     }
   }
 
   const handleInvitationResponse = async (invitationId: string, decision: "accept" | "decline") => {
     setInvitationActionId(invitationId)
-    setResponseError(null)
     try {
       await respondToInvitation(invitationId, decision)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not update the invitation. Please try again."
-      setResponseError(message)
+      toast.error(message)
     } finally {
       setInvitationActionId(null)
     }
@@ -153,12 +149,11 @@ export function GroupsView() {
 
   const handleResendInvitation = async (invitationId: string) => {
     setInvitationActionId(invitationId)
-    setInviteActionError(null)
     try {
       await resendGroupInvitation(invitationId)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not resend the invite. Please try again."
-      setInviteActionError(message)
+      toast.error(message)
     } finally {
       setInvitationActionId(null)
     }
@@ -166,12 +161,11 @@ export function GroupsView() {
 
   const handleWithdrawInvitation = async (invitationId: string) => {
     setInvitationActionId(invitationId)
-    setInviteActionError(null)
     try {
       await withdrawGroupInvitation(invitationId)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not withdraw the invite. Please try again."
-      setInviteActionError(message)
+      toast.error(message)
     } finally {
       setInvitationActionId(null)
     }
@@ -179,12 +173,11 @@ export function GroupsView() {
 
   const handleToggleGeofenceAlerts = async (geofenceId: string, enabled: boolean) => {
     setGeofenceActionId(geofenceId)
-    setActionError(null)
     try {
       await toggleGeofenceAlerts(geofenceId, enabled)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not update alerts. Please try again."
-      setActionError(message)
+      toast.error(message)
     } finally {
       setGeofenceActionId(null)
     }
@@ -192,12 +185,11 @@ export function GroupsView() {
 
   const handleDeleteGeofence = async (geofenceId: string) => {
     setGeofenceActionId(geofenceId)
-    setActionError(null)
     try {
       await deleteGeofence(geofenceId)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not remove the geofence. Please try again."
-      setActionError(message)
+      toast.error(message)
     } finally {
       setGeofenceActionId(null)
     }
@@ -252,7 +244,6 @@ export function GroupsView() {
               Create Group
             </Button>
           </div>
-          {actionError && <p className="text-sm text-danger">{actionError}</p>}
 
           {/* My Groups */}
           <div className="space-y-3">
@@ -323,8 +314,8 @@ export function GroupsView() {
                             variant="ghost"
                             size="sm"
                             className="h-7 text-xs"
-                            onClick={() => {
-                              setInviteActionError(null)
+                            onClick={(event) => {
+                              event.stopPropagation()
                               setInviteModalGroup(group)
                             }}
                           >
@@ -362,11 +353,10 @@ export function GroupsView() {
                         </div>
                       </div>
 
-                      {selectedGroup === group.id && groupOutgoingInvites.length > 0 && (
+                      {groupOutgoingInvites.length > 0 && (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <h4 className="text-sm font-semibold">Invitations</h4>
-                            {inviteActionError && <span className="text-xs text-danger">{inviteActionError}</span>}
                           </div>
                           <div className="space-y-2">
                             {groupOutgoingInvites.map((invite) => {
@@ -390,9 +380,13 @@ export function GroupsView() {
                                       variant="ghost"
                                       size="icon"
                                       className="h-8 w-8"
-                                      onClick={() => handleResendInvitation(invite.id)}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        handleResendInvitation(invite.id)
+                                      }}
                                       disabled={isProcessing || invite.status !== "pending"}
                                       title="Resend invitation"
+                                      aria-label="Resend invitation"
                                     >
                                       {isProcessing ? (
                                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -404,9 +398,13 @@ export function GroupsView() {
                                       variant="ghost"
                                       size="icon"
                                       className="h-8 w-8"
-                                      onClick={() => handleWithdrawInvitation(invite.id)}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        handleWithdrawInvitation(invite.id)
+                                      }}
                                       disabled={isProcessing || invite.status !== "pending"}
                                       title="Withdraw invitation"
+                                      aria-label="Withdraw invitation"
                                     >
                                       {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
                                     </Button>
@@ -424,7 +422,10 @@ export function GroupsView() {
                           variant="outline"
                           size="sm"
                           className="flex-1 bg-transparent"
-                          onClick={() => handleGroupMembership(group)}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleGroupMembership(group)
+                          }}
                           disabled={isSubmitting || (isOwner && isMember)}
                         >
                           {isMember ? (
@@ -443,8 +444,8 @@ export function GroupsView() {
                           variant="outline"
                           size="sm"
                           className="flex-1 bg-transparent"
-                          onClick={() => {
-                            setActionError(null)
+                          onClick={(event) => {
+                            event.stopPropagation()
                             setGeofenceModalState({ mode: "create", groupId: group.id, geofence: null })
                           }}
                         >
@@ -457,6 +458,7 @@ export function GroupsView() {
                           className="h-9 w-9 bg-transparent"
                           disabled
                           title="Group settings coming soon"
+                          onClick={(event) => event.stopPropagation()}
                         >
                           <Settings className="w-4 h-4" />
                         </Button>
@@ -515,7 +517,6 @@ export function GroupsView() {
               size="sm"
               className="h-7 text-xs"
               onClick={() => {
-                setActionError(null)
                 setGeofenceModalState({ mode: "create", groupId: selectedGroup, geofence: null })
               }}
             >
@@ -524,80 +525,89 @@ export function GroupsView() {
             </Button>
           </div>
           <div className="space-y-2">
-            {filteredGeofences.map((geofence) => (
-              <Card key={geofence.id}>
-                <CardContent className="p-3 flex items-center justify-between gap-3">
-                  {(() => {
-                    const isProcessing = geofenceActionId === geofence.id
+            {filteredGeofences.map((geofence) => {
+              const isProcessing = geofenceActionId === geofence.id
 
-                    return (
-                      <>
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-primary/20">
-                            <Shield className="w-4 h-4 text-primary" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">{geofence.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {geofence.notifyOnEntry || geofence.notifyOnExit
-                                ? `${geofence.notifyOnEntry ? "Entry" : ""}${
-                                    geofence.notifyOnEntry && geofence.notifyOnExit ? " & " : ""
-                                  }${geofence.notifyOnExit ? "Exit" : ""} alerts`
-                                : "No alerts"}
-                            </p>
-                            <p className="text-[11px] text-muted-foreground">
-                              {geofence.latitude.toFixed(4)}, {geofence.longitude.toFixed(4)} • {geofence.radiusMeters}m
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant={geofence.enabled ? "outline" : "ghost"}
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => handleToggleGeofenceAlerts(geofence.id, !geofence.enabled)}
-                            disabled={isProcessing}
-                          >
-                            {isProcessing ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Bell className={cn("w-4 h-4", geofence.enabled ? "text-primary" : "text-muted-foreground")} />
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setGeofenceModalState({ mode: "edit", geofence, groupId: geofence.groupId })}
-                            disabled={isProcessing}
-                            title="Edit geofence"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => handleDeleteGeofence(geofence.id)}
-                            disabled={isProcessing}
-                            title="Remove geofence"
-                          >
-                            {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                          </Button>
-                        </div>
-                      </>
-                    )
-                  })()}
-                </CardContent>
-              </Card>
-            ))}
+              const handleDeleteClick = () => {
+                if (isProcessing) return
+                const confirmed = window.confirm(
+                  `Delete geofence "${geofence.name}"? This action cannot be undone.`,
+                )
+
+                if (!confirmed) return
+                void handleDeleteGeofence(geofence.id)
+              }
+
+              return (
+                <Card key={geofence.id}>
+                  <CardContent className="p-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-primary/20">
+                        <Shield className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{geofence.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {geofence.notifyOnEntry || geofence.notifyOnExit
+                            ? `${geofence.notifyOnEntry ? "Entry" : ""}${
+                                geofence.notifyOnEntry && geofence.notifyOnExit ? " & " : ""
+                              }${geofence.notifyOnExit ? "Exit" : ""} alerts`
+                            : "No alerts"}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {geofence.latitude.toFixed(4)}, {geofence.longitude.toFixed(4)} • {geofence.radiusMeters}m
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant={geofence.enabled ? "outline" : "ghost"}
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleToggleGeofenceAlerts(geofence.id, !geofence.enabled)}
+                        disabled={isProcessing}
+                        title={geofence.enabled ? "Disable geofence alerts" : "Enable geofence alerts"}
+                        aria-label={geofence.enabled ? "Disable geofence alerts" : "Enable geofence alerts"}
+                      >
+                        {isProcessing ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Bell className={cn("w-4 h-4", geofence.enabled ? "text-primary" : "text-muted-foreground")} />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => setGeofenceModalState({ mode: "edit", geofence, groupId: geofence.groupId })}
+                        disabled={isProcessing}
+                        title="Edit geofence"
+                        aria-label="Edit geofence"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={handleDeleteClick}
+                        disabled={isProcessing}
+                        title="Remove geofence"
+                        aria-label="Remove geofence"
+                      >
+                        {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         </div>
 
         {/* Invitations */}
         {pendingInvitations.length > 0 && (
           <div className="space-y-2">
-          {responseError && <p className="text-xs text-danger">{responseError}</p>}
           {pendingInvitations.map((invite) => {
             const groupName = groups.find((group) => group.id === invite.groupId)?.name || invite.groupId
             const isProcessing = invitationActionId === invite.id

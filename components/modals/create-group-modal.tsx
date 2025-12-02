@@ -24,8 +24,8 @@ export function CreateGroupModal({ isOpen, onClose, onSubmit }: CreateGroupModal
     event.preventDefault()
     const trimmedName = name.trim()
 
-    if (!trimmedName) {
-      setError("Group name is required")
+    if (trimmedName.length < 3) {
+      setError("Group name must be at least 3 characters")
       return
     }
 
@@ -67,8 +67,11 @@ export function CreateGroupModal({ isOpen, onClose, onSubmit }: CreateGroupModal
           <CardContent className="p-4">
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Group name</label>
+                <label htmlFor="group-name" className="text-sm font-medium">
+                  Group name
+                </label>
                 <input
+                  id="group-name"
                   type="text"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
@@ -81,8 +84,11 @@ export function CreateGroupModal({ isOpen, onClose, onSubmit }: CreateGroupModal
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Description (optional)</label>
+                <label htmlFor="group-description" className="text-sm font-medium">
+                  Description (optional)
+                </label>
                 <textarea
+                  id="group-description"
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   placeholder="Who is in this group and what are you coordinating?"
@@ -93,7 +99,7 @@ export function CreateGroupModal({ isOpen, onClose, onSubmit }: CreateGroupModal
 
               {error && <p className="text-sm text-danger" role="alert">{error}</p>}
 
-              <Button type="submit" className="w-full h-11" disabled={isSubmitting || !name.trim()}>
+              <Button type="submit" className="w-full h-11" disabled={isSubmitting || name.trim().length < 3}>
                 {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Users className="w-4 h-4 mr-2" />}
                 {isSubmitting ? "Creating..." : "Create group"}
               </Button>
