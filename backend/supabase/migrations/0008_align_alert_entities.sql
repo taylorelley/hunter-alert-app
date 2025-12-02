@@ -247,6 +247,12 @@ for select using (
     from groups
     where owner_id = auth.uid() or auth.uid() = any(member_ids)
   )
+  or exists (
+    select 1
+    from conversations c
+    where auth.uid() = any(c.participant_ids)
+      and privacy_settings.user_id = any(c.participant_ids)
+  )
 );
 
 drop policy if exists privacy_settings_insert on privacy_settings;
@@ -350,6 +356,7 @@ create or replace function public.begin_sms_verification(
 declare
   generated_code text;
   subscription sms_alert_subscriptions;
+  hashed_code text;
 begin
   if auth.uid() is null then
     raise exception 'Authentication is required';
@@ -360,6 +367,7 @@ begin
   end if;
 
   generated_code := lpad((abs(('x' || encode(gen_random_bytes(4), 'hex'))::bit(32)::int) % 1000000)::text, 6, '0');
+  hashed_code := encode(digest(generated_code, 'sha256'), 'hex');
 
   insert into sms_alert_subscriptions (
     user_id,
@@ -374,7 +382,7 @@ begin
     auth.uid(),
     trim(phone),
     'pending',
-    generated_code,
+    hashed_code,
     now() + interval '15 minutes',
     null,
     allow_checkins,
@@ -422,7 +430,7 @@ begin
     raise exception 'Verification code expired';
   end if;
 
-  if encode(digest(subscription.verification_code, 'sha256'), 'hex') <> encode(digest(code, 'sha256'), 'hex') then
+  if subscription.verification_code <> encode(digest(code, 'sha256'), 'hex') then
     raise exception 'Invalid verification code';
   end if;
 
@@ -529,7 +537,7 @@ begin
           and not exists (
             select 1 from unnest(participant_ids) as pid
             left join privacy_settings ps on ps.user_id = pid
-            where pid <> auth.uid() and coalesce(ps.share_trips, true) = false
+            where pid <> auth.uid() and (ps.user_id is null or ps.share_trips = false)
           )
           and (since is null or updated_at > since)
         order by updated_at asc
@@ -544,7 +552,7 @@ begin
           and not exists (
             select 1 from unnest(c.participant_ids) as pid
             left join privacy_settings ps on ps.user_id = pid
-            where pid <> auth.uid() and coalesce(ps.share_trips, true) = false
+            where pid <> auth.uid() and (ps.user_id is null or ps.share_trips = false)
           )
           and (since is null or m.created_at > since)
         order by m.created_at asc
@@ -578,7 +586,7 @@ begin
           w.user_id = auth.uid()
           or (
             w.shared = true
-            and coalesce(ps.share_waypoints, true)
+            and coalesce(ps.share_waypoints, false)
             and w.conversation_id is not null
             and auth.uid() = any(c.participant_ids)
           )
@@ -602,7 +610,7 @@ begin
           or (
             gf.conversation_id is not null
             and auth.uid() = any(c.participant_ids)
-            and coalesce(ps.share_trips, true)
+            and coalesce(ps.share_trips, false)
           )
         )
           and (since is null or gf.updated_at > since)
@@ -621,14 +629,15 @@ begin
           p.emergency_contacts,
           p.is_premium,
           jsonb_strip_nulls(jsonb_build_object(
-            'shareLocation', coalesce(ps.share_location, true),
-            'showOnMap', coalesce(ps.show_on_map, true),
-            'shareTrips', coalesce(ps.share_trips, true),
-            'shareWaypoints', coalesce(ps.share_waypoints, true),
-            'notifyContacts', coalesce(ps.notify_contacts, true)
+            'shareLocation', case when p.id = auth.uid() then coalesce(ps.share_location, true) else coalesce(ps.share_location, false) end,
+            'showOnMap', case when p.id = auth.uid() then coalesce(ps.show_on_map, true) else coalesce(ps.show_on_map, false) end,
+            'shareTrips', case when p.id = auth.uid() then coalesce(ps.share_trips, true) else coalesce(ps.share_trips, false) end,
+            'shareWaypoints', case when p.id = auth.uid() then coalesce(ps.share_waypoints, true) else coalesce(ps.share_waypoints, false) end,
+            'notifyContacts', case when p.id = auth.uid() then coalesce(ps.notify_contacts, true) else coalesce(ps.notify_contacts, false) end
           )) as privacy_settings,
           case
-            when coalesce(ps.share_location, true) and coalesce(ps.show_on_map, true) then p.metadata
+            when p.id = auth.uid() then p.metadata
+            when coalesce(ps.share_location, false) and coalesce(ps.show_on_map, false) then p.metadata
             else coalesce(p.metadata, '{}'::jsonb) - 'last_location' - 'lastLocation'
           end as metadata,
           p.created_at,
@@ -686,6 +695,11 @@ begin
             select unnest(member_ids)
             from groups
             where owner_id = auth.uid() or auth.uid() = any(member_ids)
+          )
+          or user_id in (
+            select unnest(c.participant_ids)
+            from conversations c
+            where auth.uid() = any(c.participant_ids)
           )
         )
           and (since is null or updated_at > since)
