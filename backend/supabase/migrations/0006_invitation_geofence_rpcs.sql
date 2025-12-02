@@ -18,6 +18,10 @@ begin
     raise exception 'Invitation not found';
   end if;
 
+  if invitation.status <> 'pending' then
+    raise exception 'Only pending invitations can be resent';
+  end if;
+
   if invitation.sender_id <> auth.uid() then
     raise exception 'Not authorized to resend this invitation';
   end if;
@@ -74,9 +78,9 @@ comment on function public.withdraw_group_invitation is 'Allow invitation sender
 create or replace function public.update_geofence(
   geofence_id uuid,
   geofence_name text,
-  latitude double precision,
-  longitude double precision,
-  radius_meters int,
+  geofence_latitude double precision,
+  geofence_longitude double precision,
+  geofence_radius_meters int,
   geofence_description text default null
 )
 returns geofences as $$
@@ -90,9 +94,9 @@ begin
   update geofences
   set name = geofence_name,
       description = geofence_description,
-      latitude = latitude,
-      longitude = longitude,
-      radius_meters = radius_meters
+      latitude = geofence_latitude,
+      longitude = geofence_longitude,
+      radius_meters = geofence_radius_meters
   where id = geofence_id
     and user_id = auth.uid()
   returning * into updated_geofence;

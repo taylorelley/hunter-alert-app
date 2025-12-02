@@ -113,13 +113,14 @@ export function InviteMemberModal({ isOpen, onClose, onSubmit, groupName }: Invi
       }}
       role="dialog"
       aria-modal="true"
+      aria-labelledby="invite-modal-title"
     >
       <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-lg mx-auto" ref={modalRef}>
         <Card className="shadow-2xl" onClick={(event) => event.stopPropagation()}>
           <div className="flex items-center justify-between p-4 border-b border-border bg-card rounded-t-xl">
             <div>
               <p className="text-xs text-muted-foreground">Invite to {groupName || "group"}</p>
-              <h2 className="text-lg font-semibold">New Member Invitation</h2>
+              <h2 id="invite-modal-title" className="text-lg font-semibold">New Member Invitation</h2>
             </div>
             <button
               onClick={onClose}

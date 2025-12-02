@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Loader2, MapPin, Navigation2, Ruler, Shield, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -40,6 +40,9 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
+  const modalRef = useRef<HTMLDivElement>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
+  const previouslyFocusedElementRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (isOpen && initialValues) {
@@ -58,8 +61,62 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
 
     if (isOpen) {
       setError(null)
+      previouslyFocusedElementRef.current = document.activeElement as HTMLElement | null
+      requestAnimationFrame(() => {
+        if (!isOpen) return
+        if (nameInputRef.current) {
+          nameInputRef.current.focus()
+        } else {
+          modalRef.current?.focus()
+        }
+      })
     }
   }, [isOpen, initialValues])
+
+  useEffect(() => {
+    if (!isOpen && previouslyFocusedElementRef.current) {
+      previouslyFocusedElementRef.current.focus()
+    }
+  }, [isOpen])
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (!isOpen) return
+
+      if (event.key === "Escape" && !isSubmitting) {
+        onClose()
+      }
+
+      if (event.key === "Tab" && modalRef.current) {
+        const focusable = Array.from(
+          modalRef.current.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((el) => !el.hasAttribute("disabled"))
+
+        if (focusable.length === 0) return
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault()
+          first.focus()
+        } else if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault()
+          last.focus()
+        }
+      }
+    },
+    [isOpen, isSubmitting, onClose],
+  )
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [handleKeyDown, isOpen])
 
   if (!isOpen) return null
 
@@ -117,13 +174,30 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
-      <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-lg mx-auto">
+    <div
+      className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="geofence-modal-title"
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !isSubmitting) {
+          onClose()
+        }
+      }}
+    >
+      <div
+        className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-lg mx-auto"
+        ref={modalRef}
+        tabIndex={-1}
+        onClick={(event) => event.stopPropagation()}
+      >
         <Card className="shadow-2xl">
           <div className="flex items-center justify-between p-4 border-b border-border bg-card rounded-t-xl">
             <div>
               <p className="text-xs text-muted-foreground">{groupName ? `For ${groupName}` : "Geofence"}</p>
-              <h2 className="text-lg font-semibold">{mode === "create" ? "Add Geofence" : "Edit Geofence"}</h2>
+              <h2 id="geofence-modal-title" className="text-lg font-semibold">
+                {mode === "create" ? "Add Geofence" : "Edit Geofence"}
+              </h2>
             </div>
             <button
               onClick={onClose}
@@ -146,6 +220,7 @@ export function GeofenceFormModal({ isOpen, mode, groupName, initialValues, onCl
                   type="text"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
+                  ref={nameInputRef}
                   placeholder="Camp perimeter"
                   className="w-full p-3 rounded-lg bg-input border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   disabled={isSubmitting}

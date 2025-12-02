@@ -528,17 +528,6 @@ export function GroupsView() {
           <div className="space-y-2">
             {filteredGeofences.map((geofence) => {
               const isProcessing = geofenceActionId === geofence.id
-
-              const handleDeleteClick = () => {
-                if (isProcessing) return
-                const confirmed = window.confirm(
-                  `Delete geofence "${geofence.name}"? This action cannot be undone.`,
-                )
-
-                if (!confirmed) return
-                void handleDeleteGeofence(geofence.id)
-              }
-
               return (
                 <Card key={geofence.id}>
                   <CardContent className="p-3 flex items-center justify-between gap-3">
@@ -591,7 +580,16 @@ export function GroupsView() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
-                        onClick={handleDeleteClick}
+                        onClick={() => {
+                          if (isProcessing) return
+                          if (
+                            !window.confirm(
+                              `Delete geofence "${geofence.name}"? This action cannot be undone.`,
+                            )
+                          )
+                            return
+                          void handleDeleteGeofence(geofence.id)
+                        }}
                         disabled={isProcessing}
                         title="Remove geofence"
                         aria-label="Remove geofence"

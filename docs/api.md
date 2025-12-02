@@ -63,6 +63,13 @@ Returns recent changes for the authenticated user in a single JSON payload.
 ## RPC: `resend_group_invitation(invitation_id uuid)`
 Marks a pending invitation as resent by updating its metadata. Only the original sender can resend.
 
+**Request payload**
+```json
+{
+  "invitation_id": "uuid"
+}
+```
+
 **Behavior**
 - Validates the caller is authenticated and the invitation exists.
 - Verifies `auth.uid()` matches `sender_id` before updating `metadata.resent_at`.
@@ -70,6 +77,13 @@ Marks a pending invitation as resent by updating its metadata. Only the original
 
 ## RPC: `withdraw_group_invitation(invitation_id uuid)`
 Allows an invitation sender to withdraw a pending invite.
+
+**Request payload**
+```json
+{
+  "invitation_id": "uuid"
+}
+```
 
 **Behavior**
 - Requires authentication and that the caller is the original sender.
