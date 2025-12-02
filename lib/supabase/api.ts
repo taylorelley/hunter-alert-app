@@ -636,7 +636,6 @@ export async function addWaypoint(
     description?: string;
     tripId?: string;
     shared?: boolean;
-    groupId?: string | null;
   },
 ): Promise<Waypoint> {
   // Client-side validation
@@ -658,7 +657,6 @@ export async function addWaypoint(
     waypoint_description: params.description ?? null,
     trip_id: params.tripId ?? null,
     is_shared: params.shared ?? false,
-    group_id: params.groupId ?? null,
   });
 
   if (error) {

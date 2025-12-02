@@ -23,7 +23,7 @@ const waypointTypes = [
 ]
 
 export function AddWaypointModal({ isOpen, onClose }: AddWaypointModalProps) {
-  const { addWaypoint, groups } = useApp()
+  const { addWaypoint, groups, state } = useApp()
   const [name, setName] = useState("")
   const [type, setType] = useState<string>("custom")
   const [notes, setNotes] = useState("")
@@ -54,6 +54,15 @@ export function AddWaypointModal({ isOpen, onClose }: AddWaypointModalProps) {
     fetchLocation()
   }, [fetchLocation, isOpen])
 
+  const allowGroupSharing = state.privacySettings.shareWaypoints
+
+  useEffect(() => {
+    if (!allowGroupSharing) {
+      setIsPrivate(true)
+      setShareToGroup(null)
+    }
+  }, [allowGroupSharing])
+
   const coordinateDisplay = useMemo(() => {
     if (!coordinates) return null
 
@@ -77,8 +86,8 @@ export function AddWaypointModal({ isOpen, onClose }: AddWaypointModalProps) {
       type: type as "camp" | "vehicle" | "hazard" | "water" | "viewpoint" | "custom",
       coordinates,
       notes: notes.trim(),
-      isPrivate,
-      groupId: !isPrivate ? shareToGroup : null,
+      isPrivate: allowGroupSharing ? isPrivate : true,
+      groupId: allowGroupSharing && !isPrivate ? shareToGroup : null,
     })
 
     setIsComplete(true)
@@ -201,16 +210,22 @@ export function AddWaypointModal({ isOpen, onClose }: AddWaypointModalProps) {
                     </div>
                   </button>
                   <button
-                    onClick={() => setIsPrivate(false)}
+                    onClick={() => allowGroupSharing && setIsPrivate(false)}
+                    disabled={!allowGroupSharing}
                     className={cn(
                       "w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left",
                       !isPrivate ? "border-primary bg-primary/10" : "border-border hover:border-primary/50",
+                      !allowGroupSharing && "opacity-60 cursor-not-allowed",
                     )}
                   >
                     <Globe className="w-5 h-5 text-muted-foreground" />
                     <div>
                       <p className="font-medium text-sm">Shared</p>
-                      <p className="text-xs text-muted-foreground">Visible to your groups</p>
+                      <p className="text-xs text-muted-foreground">
+                        {allowGroupSharing
+                          ? "Visible to your groups"
+                          : "Group sharing is disabled in Privacy settings"}
+                      </p>
                     </div>
                   </button>
                 </div>

@@ -1528,7 +1528,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           description: waypoint.notes,
           tripId: state.currentTrip?.id,
           shared: allowSharing ? !waypoint.isPrivate : false,
-          groupId: allowSharing && !waypoint.isPrivate ? waypoint.groupId ?? null : null,
         })
 
         // Optimistically update local state
