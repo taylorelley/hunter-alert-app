@@ -24,7 +24,15 @@ import { useApp } from "./app-provider"
 import { BillingSettings } from "./billing-settings"
 import { cn } from "@/lib/utils"
 import { getCurrentPosition } from "@/lib/geolocation"
-import { getWeatherByCoordinates, type WeatherData, formatCondition } from "@/lib/weather"
+import { Badge } from "@/components/ui/badge"
+import { useNetwork } from "@/components/network-provider"
+import {
+  getCachedWeather,
+  getWeatherByCoordinates,
+  getWeatherByCity,
+  type WeatherData,
+  formatCondition,
+} from "@/lib/weather"
 
 interface HomeViewProps {
   onNavigate: (tab: string) => void
@@ -35,9 +43,15 @@ interface HomeViewProps {
 
 export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: HomeViewProps) {
   const { currentTrip, nextCheckInDue, checkInStatus, isPremium, waypoints } = useApp()
+  const { state: networkState } = useNetwork()
   const [timeRemaining, setTimeRemaining] = useState("")
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(true)
+  const [locationError, setLocationError] = useState<string | null>(null)
+  const [manualLocation, setManualLocation] = useState("")
+  const [usingCachedWeather, setUsingCachedWeather] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const isOffline = networkState.connectivity === "offline"
 
   useEffect(() => {
     if (!nextCheckInDue) return
@@ -66,25 +80,45 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
     return () => clearInterval(interval)
   }, [nextCheckInDue])
 
-  // Fetch location and weather on mount
+  // Fetch location and weather on mount and network changes
   useEffect(() => {
     let mounted = true
     const fetchLocationAndWeather = async () => {
       try {
         setWeatherLoading(true)
+        setLocationError(null)
+
+        if (networkState.connectivity === "offline") {
+          const cached = await getCachedWeather()
+          if (mounted && cached) {
+            setWeather(cached)
+            setLastUpdated(new Date(cached.fetchedAt))
+            setUsingCachedWeather(true)
+          }
+          return
+        }
+
         const coords = await getCurrentPosition()
         if (!mounted) return
 
-        // Fetch weather using location
-        const weatherData = await getWeatherByCoordinates(coords.latitude, coords.longitude)
+        const weatherData = await getWeatherByCoordinates(coords.latitude, coords.longitude, {
+          constrained: networkState.constrained || networkState.connectivity === "satellite",
+        })
         if (!mounted) return
         setWeather(weatherData)
+        setLastUpdated(new Date(weatherData.fetchedAt))
+        setUsingCachedWeather(false)
       } catch (error) {
         console.error("Error fetching location/weather:", error)
-        // Fall back to default weather (mock data)
-        const weatherData = await getWeatherByCoordinates(43.8, -103.5) // Black Hills, SD
-        if (!mounted) return
-        setWeather(weatherData)
+        const cached = await getCachedWeather()
+        if (mounted) {
+          setLocationError(error instanceof Error ? error.message : "Unable to fetch weather")
+          if (cached) {
+            setWeather(cached)
+            setLastUpdated(new Date(cached.fetchedAt))
+            setUsingCachedWeather(true)
+          }
+        }
       } finally {
         if (mounted) {
           setWeatherLoading(false)
@@ -96,7 +130,36 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
     return () => {
       mounted = false
     }
-  }, [])
+  }, [networkState])
+
+  const handleManualWeather = async () => {
+    if (!manualLocation.trim()) {
+      setLocationError("Enter a city or landmark to fetch weather manually.")
+      return
+    }
+
+    try {
+      setWeatherLoading(true)
+      setLocationError(null)
+      const weatherData = await getWeatherByCity(manualLocation.trim(), {
+        constrained: networkState.constrained || networkState.connectivity === "satellite",
+      })
+      setWeather(weatherData)
+      setLastUpdated(new Date(weatherData.fetchedAt))
+      setUsingCachedWeather(false)
+    } catch (error) {
+      console.error("Manual weather lookup failed:", error)
+      setLocationError(
+        error instanceof Error ? error.message : "Unable to fetch weather for the provided location.",
+      )
+    } finally {
+      setWeatherLoading(false)
+    }
+  }
+
+  const lastUpdatedLabel = lastUpdated
+    ? `Updated ${lastUpdated.toLocaleString()}${usingCachedWeather ? " (cached)" : ""}`
+    : null
 
   // Get weather icon based on condition
   const getWeatherIcon = (condition: string) => {
@@ -226,7 +289,29 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
 
         {/* Weather Strip */}
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold">Local Weather</p>
+                {lastUpdatedLabel && <p className="text-xs text-muted-foreground">{lastUpdatedLabel}</p>}
+              </div>
+              {(usingCachedWeather || isOffline) && (
+                <Badge variant="outline" className="text-xs">
+                  {isOffline ? "Offline" : "Cached"}
+                </Badge>
+              )}
+            </div>
+
+            {locationError && (
+              <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+                <AlertTriangle className="mt-0.5 h-4 w-4" />
+                <div>
+                  <p className="font-semibold">Location unavailable</p>
+                  <p className="text-xs text-warning/90">{locationError}</p>
+                </div>
+              </div>
+            )}
+
             {weatherLoading ? (
               <div className="flex items-center justify-center p-4">
                 <p className="text-sm text-muted-foreground">Loading weather...</p>
@@ -273,6 +358,24 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
                 <p className="text-sm text-muted-foreground">Weather unavailable</p>
               </div>
             )}
+
+            <div className="space-y-1 pt-2 border-t border-border">
+              <label className="text-xs font-semibold text-muted-foreground">Manual location</label>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none"
+                  placeholder="Enter city or waypoint"
+                  value={manualLocation}
+                  onChange={(e) => setManualLocation(e.target.value)}
+                />
+                <Button variant="outline" onClick={handleManualWeather} disabled={weatherLoading}>
+                  Use
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Use manual entry if location permission is denied or GPS is unreliable.
+              </p>
+            </div>
           </CardContent>
         </Card>
 

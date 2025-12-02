@@ -6,6 +6,10 @@
  * Get a free API key at: https://openweathermap.org/api
  */
 
+import { Capacitor } from "@capacitor/core";
+import { Preferences } from "@capacitor/preferences";
+import { get, set } from "idb-keyval";
+
 export interface WeatherData {
   temperature: number; // Fahrenheit
   temperatureCelsius: number;
@@ -18,10 +22,102 @@ export interface WeatherData {
   location: string;
   sunrise?: number; // Unix timestamp
   sunset?: number; // Unix timestamp
+  fetchedAt: number; // Unix timestamp (ms)
+}
+
+interface WeatherRequestOptions {
+  constrained?: boolean;
+}
+
+interface CachedWeatherPayload {
+  data: WeatherData;
+  timestamp: number;
 }
 
 const API_KEY = process.env.NEXT_PUBLIC_WEATHER_API_KEY;
-const BASE_URL = 'https://api.openweathermap.org/data/2.5';
+const BASE_URL = "https://api.openweathermap.org/data/2.5";
+const WEATHER_CACHE_KEY = "weather:last-success";
+const REQUEST_TIMEOUT_MS = 12000;
+const configuredBackoff = Number(process.env.SYNC_BASE_BACKOFF_MS ?? 4000);
+const BASE_BACKOFF_MS = Number.isFinite(configuredBackoff) ? Math.max(configuredBackoff, 1000) : 4000;
+
+function assertWeatherApiKey(): string {
+  if (!API_KEY) {
+    throw new Error(
+      "NEXT_PUBLIC_WEATHER_API_KEY is required for weather. Add it to your environment (OpenWeatherMap API key).",
+    );
+  }
+  return API_KEY;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithBackoff(url: string, { constrained }: WeatherRequestOptions = {}) {
+  const attempts = constrained ? 4 : 3;
+  const baseDelay = constrained ? BASE_BACKOFF_MS * 1.5 : BASE_BACKOFF_MS;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!response.ok) {
+        throw new Error(`Weather API error: ${response.status}`);
+      }
+      return response;
+    } catch (error) {
+      clearTimeout(timeout);
+      if (attempt === attempts) {
+        throw error;
+      }
+      const backoff = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 500;
+      await delay(backoff);
+    }
+  }
+
+  throw new Error("Weather request failed after retries");
+}
+
+async function cacheWeather(data: WeatherData): Promise<void> {
+  const payload: CachedWeatherPayload = { data, timestamp: data.fetchedAt };
+
+  try {
+    if (typeof window === "undefined") return;
+
+    if (Capacitor.isNativePlatform()) {
+      await Preferences.set({ key: WEATHER_CACHE_KEY, value: JSON.stringify(payload) });
+    } else {
+      await set(WEATHER_CACHE_KEY, payload);
+    }
+  } catch (error) {
+    console.warn("Unable to cache weather data", error);
+  }
+}
+
+async function readCachedWeather(): Promise<WeatherData | null> {
+  try {
+    if (typeof window === "undefined") return null;
+
+    const stored = Capacitor.isNativePlatform()
+      ? (await Preferences.get({ key: WEATHER_CACHE_KEY })).value
+      : ((await get(WEATHER_CACHE_KEY)) as CachedWeatherPayload | null);
+
+    if (!stored) return null;
+
+    const payload: CachedWeatherPayload =
+      typeof stored === "string" ? JSON.parse(stored) : (stored as CachedWeatherPayload);
+
+    if (!payload?.data) return null;
+
+    return { ...payload.data, fetchedAt: payload.timestamp ?? payload.data.fetchedAt };
+  } catch (error) {
+    console.warn("Unable to read cached weather data", error);
+    return null;
+  }
+}
 
 /**
  * Fetch current weather by coordinates
@@ -29,23 +125,16 @@ const BASE_URL = 'https://api.openweathermap.org/data/2.5';
 export async function getWeatherByCoordinates(
   latitude: number,
   longitude: number,
+  options: WeatherRequestOptions = {},
 ): Promise<WeatherData> {
-  if (!API_KEY) {
-    console.warn('Weather API key not configured. Using mock data.');
-    return getMockWeather();
-  }
+  assertWeatherApiKey();
 
   try {
     const url = `${BASE_URL}/weather?lat=${latitude}&lon=${longitude}&appid=${API_KEY}&units=imperial`;
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      throw new Error(`Weather API error: ${response.status}`);
-    }
-
+    const response = await fetchWithBackoff(url, options);
     const data = await response.json();
 
-    return {
+    const weather: WeatherData = {
       temperature: Math.round(data.main.temp),
       temperatureCelsius: Math.round((data.main.temp - 32) * (5 / 9)),
       condition: data.weather[0].main,
@@ -54,37 +143,36 @@ export async function getWeatherByCoordinates(
       humidity: data.main.humidity,
       windSpeed: Math.round(data.wind.speed),
       windSpeedKmh: Math.round(data.wind.speed * 1.60934),
-      location: data.name || 'Unknown',
+      location: data.name || "Unknown",
       sunrise: data.sys.sunrise,
       sunset: data.sys.sunset,
+      fetchedAt: Date.now(),
     };
+
+    cacheWeather(weather);
+    return weather;
   } catch (error) {
-    console.error('Error fetching weather:', error);
-    // Fall back to mock data on error
-    return getMockWeather();
+    console.error("Error fetching weather:", error);
+    const cached = await readCachedWeather();
+    if (cached) return cached;
+    throw error instanceof Error
+      ? error
+      : new Error("Unable to fetch weather data. Check connectivity or try again.");
   }
 }
 
 /**
  * Fetch current weather by city name
  */
-export async function getWeatherByCity(city: string): Promise<WeatherData> {
-  if (!API_KEY) {
-    console.warn('Weather API key not configured. Using mock data.');
-    return getMockWeather();
-  }
+export async function getWeatherByCity(city: string, options: WeatherRequestOptions = {}): Promise<WeatherData> {
+  assertWeatherApiKey();
 
   try {
     const url = `${BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=imperial`;
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      throw new Error(`Weather API error: ${response.status}`);
-    }
-
+    const response = await fetchWithBackoff(url, options);
     const data = await response.json();
 
-    return {
+    const weather: WeatherData = {
       temperature: Math.round(data.main.temp),
       temperatureCelsius: Math.round((data.main.temp - 32) * (5 / 9)),
       condition: data.weather[0].main,
@@ -96,11 +184,18 @@ export async function getWeatherByCity(city: string): Promise<WeatherData> {
       location: data.name,
       sunrise: data.sys.sunrise,
       sunset: data.sys.sunset,
+      fetchedAt: Date.now(),
     };
+
+    cacheWeather(weather);
+    return weather;
   } catch (error) {
-    console.error('Error fetching weather:', error);
-    // Fall back to mock data on error
-    return getMockWeather();
+    console.error("Error fetching weather:", error);
+    const cached = await readCachedWeather();
+    if (cached) return cached;
+    throw error instanceof Error
+      ? error
+      : new Error("Unable to fetch weather data. Check connectivity or try again.");
   }
 }
 
@@ -137,25 +232,12 @@ export function formatCondition(condition: string): string {
 }
 
 /**
- * Mock weather data for development/fallback
- */
-function getMockWeather(): WeatherData {
-  return {
-    temperature: 72,
-    temperatureCelsius: 22,
-    condition: 'Clear',
-    description: 'clear sky',
-    icon: '01d',
-    humidity: 45,
-    windSpeed: 8,
-    windSpeedKmh: 13,
-    location: 'Black Hills, SD',
-  };
-}
-
-/**
  * Check if weather API is configured
  */
 export function isWeatherApiConfigured(): boolean {
   return !!API_KEY;
+}
+
+export async function getCachedWeather(): Promise<WeatherData | null> {
+  return readCachedWeather();
 }

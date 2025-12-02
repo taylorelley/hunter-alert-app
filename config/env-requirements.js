@@ -1,6 +1,7 @@
 export const REQUIRED_ENV_VARS = [
   { key: "NEXT_PUBLIC_SUPABASE_URL", description: "Supabase project URL" },
   { key: "NEXT_PUBLIC_SUPABASE_ANON_KEY", description: "Supabase anon public key" },
+  { key: "NEXT_PUBLIC_WEATHER_API_KEY", description: "OpenWeatherMap API key for live weather" },
 ];
 
 export const CONSTRAINED_ENV_LIMITS = [
