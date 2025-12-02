@@ -20,6 +20,7 @@ import {
   listDeviceSessions,
   updateEmergencyContacts as apiUpdateEmergencyContacts,
   sendTestNotification as apiSendTestNotification,
+  upsertPrivacySettings as apiUpsertPrivacySettings,
 } from "@/lib/supabase/api"
 import { useNetwork } from "./network-provider"
 import { useSyncEngine } from "@/lib/sync/use-sync-engine"
@@ -35,6 +36,7 @@ import {
   GroupActivity as APIGroupActivity,
   MessageDraft,
   DeviceSession,
+  PrivacySettingsRow,
 } from "@/lib/supabase/types"
 import { Device } from "@capacitor/device"
 import { persistCachedDeviceSessions, readCachedDeviceSessions } from "@/lib/storage/device-sessions"
@@ -106,6 +108,22 @@ export interface MemberLocation {
   updatedAt: string
 }
 
+export interface PrivacySettings {
+  shareLocation: boolean
+  showOnMap: boolean
+  shareTrips: boolean
+  shareWaypoints: boolean
+  notifyContacts: boolean
+}
+
+const DEFAULT_PRIVACY_SETTINGS: PrivacySettings = {
+  shareLocation: true,
+  showOnMap: true,
+  shareTrips: true,
+  shareWaypoints: true,
+  notifyContacts: true,
+}
+
 export interface DeviceSessionView {
   id: string
   label: string
@@ -166,6 +184,7 @@ type ConversationRecord = {
   id?: string
   title?: string | null
   metadata?: Record<string, unknown> | null
+  participant_ids?: string[]
 }
 
 type MessageRecord = {
@@ -200,6 +219,7 @@ interface AppState {
   lastSOSLocation: SOSLocation | null
   userName: string
   emergencyContacts: EmergencyContact[]
+  privacySettings: PrivacySettings
 }
 
 interface AppContextValue extends AppState {
@@ -218,6 +238,7 @@ interface AppContextValue extends AppState {
   updateEmergencyContact: (id: string, contact: Omit<EmergencyContact, "id">) => Promise<void>
   deleteEmergencyContact: (id: string) => Promise<void>
   sendTestContactNotification: (options: { contactId: string; channel?: "sms" | "email" }) => Promise<void>
+  updatePrivacySettings: (settings: Partial<PrivacySettings>) => Promise<void>
   signUp: (params: { email: string; password: string; displayName?: string }) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
@@ -294,6 +315,16 @@ function normalizeEmergencyContacts(value: unknown): EmergencyContact[] {
     contacts.push({ id, name, phone, email, relationship })
     return contacts
   }, [])
+}
+
+function normalizePrivacySettings(value: PrivacySettingsRow | null | undefined): PrivacySettings {
+  return {
+    shareLocation: value?.share_location ?? DEFAULT_PRIVACY_SETTINGS.shareLocation,
+    showOnMap: value?.show_on_map ?? DEFAULT_PRIVACY_SETTINGS.showOnMap,
+    shareTrips: value?.share_trips ?? DEFAULT_PRIVACY_SETTINGS.shareTrips,
+    shareWaypoints: value?.share_waypoints ?? DEFAULT_PRIVACY_SETTINGS.shareWaypoints,
+    notifyContacts: value?.notify_contacts ?? DEFAULT_PRIVACY_SETTINGS.notifyContacts,
+  }
 }
 
 async function getDeviceDescriptor() {
@@ -460,6 +491,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [backendGeofences, setBackendGeofences] = useState<APIGeofence[]>([])
   const [backendProfiles, setBackendProfiles] = useState<APIProfile[]>([])
   const [backendDeviceSessions, setBackendDeviceSessions] = useState<DeviceSession[]>([])
+  const [backendPrivacySettings, setBackendPrivacySettings] = useState<
+    (PrivacySettingsRow & { id: string })[]
+  >([])
   const [syncCursor, setSyncCursor] = useState<string | null>(null)
   const [billingOfferings, setBillingOfferings] = useState<BillingOffering[]>([])
   const [billingReceipt, setBillingReceipt] = useState<string | null>(null)
@@ -488,6 +522,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lastSOSLocation: null,
     userName: "Guest",
     emergencyContacts: [],
+    privacySettings: DEFAULT_PRIVACY_SETTINGS,
   })
 
   useEffect(() => {
@@ -555,6 +590,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
 
       if (profileError) throw profileError
+
+      await apiUpsertPrivacySettings(supabase, {
+        user_id: profilePayload.id,
+        share_location: true,
+        show_on_map: true,
+        share_trips: true,
+        share_waypoints: true,
+        notify_contacts: true,
+      })
 
       setProfile(profilePayload)
       setBackendProfiles((prev) => mergeRecords(prev, [profilePayload]))
@@ -662,6 +706,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastSOSLocation: null,
       userName: "Guest",
       emergencyContacts: [],
+      privacySettings: DEFAULT_PRIVACY_SETTINGS,
     })
   }, [network.connectivity, supabase])
 
@@ -739,6 +784,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [session, state.emergencyContacts, supabase],
   )
 
+  const updatePrivacySettings = useCallback(
+    async (settings: Partial<PrivacySettings>) => {
+      if (!session?.user?.id) throw new Error("Sign-in required to update privacy settings")
+
+      const existing = backendPrivacySettings.find((entry) => entry.user_id === session.user!.id)
+      const current = normalizePrivacySettings(existing)
+      const next = { ...current, ...settings }
+
+      setState((prev) => ({ ...prev, privacySettings: next }))
+
+      try {
+        const saved = await apiUpsertPrivacySettings(supabase, {
+          user_id: session.user.id,
+          share_location: next.shareLocation,
+          show_on_map: next.showOnMap,
+          share_trips: next.shareTrips,
+          share_waypoints: next.shareWaypoints,
+          notify_contacts: next.notifyContacts,
+        })
+
+        setBackendPrivacySettings((prev) => mergeRecords(prev, [{ ...saved, id: saved.user_id }]))
+      } catch (error) {
+        console.error("Unable to update privacy settings", error)
+        setState((prev) => ({ ...prev, privacySettings: current }))
+        throw error
+      }
+    },
+    [backendPrivacySettings, session?.user?.id, supabase],
+  )
+
   const persistEntitlement = useCallback(
     async (active: boolean, receipt?: string | null) => {
       const previousIsPremium = state.isPremium
@@ -800,6 +875,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBackendGeofences((prev) => mergeRecords(prev, result.geofences ?? []))
       setBackendDeviceSessions((prev) => mergeRecords(prev, result.device_sessions ?? []))
 
+      if (result.privacy_settings && result.privacy_settings.length > 0) {
+        const withIds = result.privacy_settings.map((entry) => ({ ...entry, id: entry.user_id }))
+        setBackendPrivacySettings((prev) => mergeRecords(prev, withIds))
+      }
+
       if (result.profiles && result.profiles.length > 0) {
         setBackendProfiles((prev) => mergeRecords(prev, result.profiles as APIProfile[]))
 
@@ -808,6 +888,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           result.profiles[0]
 
         if (profileData) {
+          const privacy =
+            backendPrivacySettings.find((entry) => entry.user_id === profileData.id) ||
+            result.privacy_settings?.find((entry) => entry.user_id === profileData.id)
           setProfile(profileData as APIProfile)
           setState((prev) => ({
             ...prev,
@@ -816,11 +899,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             emergencyContacts: normalizeEmergencyContacts(
               (profileData as APIProfile).emergency_contacts ?? prev.emergencyContacts,
             ),
+            privacySettings: normalizePrivacySettings(privacy ?? result.privacy_settings?.[0]),
           }))
         }
       }
     },
-    [session?.user?.id],
+    [backendPrivacySettings, session?.user?.id],
   )
 
   const applySendResults = useCallback((actions: PendingAction[], records: Record<string, unknown>[]) => {
@@ -967,6 +1051,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [network.connectivity])
 
   useEffect(() => {
+    if (!session?.user?.id) return
+    const privacy = backendPrivacySettings.find((entry) => entry.user_id === session.user.id)
+    if (privacy) {
+      setState((prev) => ({ ...prev, privacySettings: normalizePrivacySettings(privacy) }))
+    }
+  }, [backendPrivacySettings, session?.user?.id])
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         setSession(data.session)
@@ -999,7 +1091,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const mappedTrips = conversations
+    const privacyMap = new Map(
+      backendPrivacySettings.map((entry) => [entry.user_id, normalizePrivacySettings(entry)]),
+    )
+
+    const allowedConversations = conversations.filter((conversation) => {
+      const participants = (conversation.participant_ids as string[] | undefined) ?? []
+      const otherParticipants = participants.filter((id) => id !== session?.user?.id)
+      return !otherParticipants.some((id) => privacyMap.get(id)?.shareTrips === false)
+    })
+
+    const mappedTrips = allowedConversations
       .map((conversation) => mapConversationToTrip(conversation, messages))
       .map((trip) => ({
         ...trip,
@@ -1026,7 +1128,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       checkInStatus: activeTrip ? (pendingCheck ? "pending" : overdue ? "overdue" : "ok") : "pending",
       nextCheckInDue: activeTrip ? nextDue : null,
     }))
-  }, [conversations, messages, state.isPremium])
+  }, [backendPrivacySettings, conversations, messages, session?.user?.id, state.isPremium])
 
   useEffect(() => {
     const tripId = state.currentTrip?.id
@@ -1248,6 +1350,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!session) throw new Error("Sign-in required to add waypoint")
 
       try {
+        const allowSharing = state.privacySettings.shareWaypoints
         const result = await apiAddWaypoint(supabase, {
           name: waypoint.name,
           latitude: waypoint.coordinates.lat,
@@ -1255,7 +1358,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           type: waypoint.type,
           description: waypoint.notes,
           tripId: state.currentTrip?.id,
-          shared: !waypoint.isPrivate,
+          shared: allowSharing ? !waypoint.isPrivate : false,
         })
 
         // Optimistically update local state
@@ -1266,7 +1369,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw error
       }
     },
-    [flush, session, state.currentTrip?.id, supabase],
+    [flush, session, state.currentTrip?.id, state.privacySettings.shareWaypoints, supabase],
   )
 
   const createGroup = useCallback(
@@ -1398,7 +1501,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error("No active trip or group conversation available for SOS alerts")
       }
 
-      const location = await captureSOSLocation()
+      const allowLocation = state.privacySettings.shareLocation && state.privacySettings.showOnMap
+      const location = allowLocation ? await captureSOSLocation() : null
       const created_at = new Date().toISOString()
       const body =
         status === "active"
@@ -1424,7 +1528,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       return { payload: { conversation_id: targetConversationId, body, metadata, created_at }, location }
     },
-    [captureSOSLocation, conversations, session, state.currentTrip?.id, state.emergencyContacts, state.groups],
+    [
+      captureSOSLocation,
+      conversations,
+      session,
+      state.currentTrip?.id,
+      state.emergencyContacts,
+      state.groups,
+      state.privacySettings,
+    ],
   )
 
   const dispatchSOS = useCallback(
@@ -1482,17 +1594,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const profileMap = new Map(backendProfiles.map((profile) => [profile.id, profile]))
     const currentUserId = session?.user?.id
+    const privacyMap = new Map(
+      backendPrivacySettings.map((entry) => [entry.user_id, normalizePrivacySettings(entry)]),
+    )
 
     // Convert backend waypoints to UI format
-    const uiWaypoints: Waypoint[] = backendWaypoints.map((wp) => ({
-      id: wp.id,
-      name: wp.name,
-      type: wp.waypoint_type as Waypoint["type"],
-      coordinates: { lat: wp.latitude, lng: wp.longitude },
-      notes: wp.description || "",
-      isPrivate: !wp.shared,
-      createdAt: new Date(wp.created_at),
-    }))
+    const uiWaypoints: Waypoint[] = backendWaypoints
+      .map((wp) => {
+        const ownerPrivacy = privacyMap.get(wp.user_id)
+        if (wp.user_id !== currentUserId && ownerPrivacy?.shareWaypoints === false) return null
+        if (wp.user_id !== currentUserId && !wp.shared) return null
+
+        return {
+          id: wp.id,
+          name: wp.name,
+          type: wp.waypoint_type as Waypoint["type"],
+          coordinates: { lat: wp.latitude, lng: wp.longitude },
+          notes: wp.description || "",
+          isPrivate: !wp.shared,
+          createdAt: new Date(wp.created_at),
+        }
+      })
+      .filter((wp): wp is Waypoint => Boolean(wp))
 
     // Convert backend groups to UI format
     const uiGroups: Group[] = backendGroups.map((g) => {
@@ -1538,6 +1661,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const uiMemberLocations = backendProfiles
       .map<MemberLocation | null>((profile) => {
+        const privacy = privacyMap.get(profile.id) ?? DEFAULT_PRIVACY_SETTINGS
+        if (profile.id !== currentUserId && (!privacy.shareLocation || !privacy.showOnMap)) {
+          return null
+        }
+
         const metadata = profile.metadata
         const lastLocation = metadata?.last_location || metadata?.lastLocation
 
@@ -1612,6 +1740,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     backendGroupInvitations,
     backendGroupActivity,
     backendDeviceSessions,
+    backendPrivacySettings,
     deviceSessionId,
     session?.user?.id,
   ])
@@ -1634,6 +1763,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateEmergencyContact,
       deleteEmergencyContact,
       sendTestContactNotification,
+      updatePrivacySettings,
       signUp,
       signIn,
       signOut,
@@ -1696,6 +1826,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       status,
       toggleGeofenceAlerts,
       triggerSOS,
+      updatePrivacySettings,
       updateEmergencyContact,
       updateGeofenceAlerts,
       updateTrip,

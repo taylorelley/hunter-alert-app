@@ -10,6 +10,7 @@ import {
   Geofence,
   GroupInvitation,
   DeviceSession,
+  PrivacySettingsRow,
 } from './types';
 
 type EmergencyContactPayload = {
@@ -194,6 +195,7 @@ export async function pullUpdates(
     geofences: [],
     profiles: [],
     device_sessions: [],
+    privacy_settings: [],
   };
 
   if (data && typeof data === 'object') {
@@ -216,6 +218,9 @@ export async function pullUpdates(
     result.profiles = Array.isArray(data.profiles) ? data.profiles.slice(0, maxRows) : [];
     result.device_sessions = Array.isArray(data.device_sessions)
       ? data.device_sessions.slice(0, maxRows)
+      : [];
+    result.privacy_settings = Array.isArray(data.privacy_settings)
+      ? (data.privacy_settings.slice(0, maxRows) as PrivacySettingsRow[])
       : [];
   }
 
@@ -597,4 +602,21 @@ export async function sendTestNotification(
   }
 
   return data as Record<string, unknown>;
+}
+
+export async function upsertPrivacySettings(
+  client: SupabaseClient,
+  settings: Omit<PrivacySettingsRow, 'created_at' | 'updated_at'>,
+): Promise<PrivacySettingsRow> {
+  const { data, error } = await client
+    .from('privacy_settings')
+    .upsert(settings)
+    .select()
+    .maybeSingle();
+
+  if (error || !data) {
+    throw error ?? new Error('Unable to persist privacy preferences');
+  }
+
+  return data as PrivacySettingsRow;
 }

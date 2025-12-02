@@ -94,7 +94,9 @@ export interface Profile {
   privacy_settings: {
     shareLocation: boolean;
     showOnMap: boolean;
-    notifyContacts: boolean;
+    shareTrips?: boolean;
+    shareWaypoints?: boolean;
+    notifyContacts?: boolean;
   };
   metadata?: {
     last_location?: {
@@ -125,6 +127,17 @@ export interface Profile {
   updated_at: string;
 }
 
+export interface PrivacySettingsRow {
+  user_id: string;
+  share_location: boolean;
+  show_on_map: boolean;
+  share_trips: boolean;
+  share_waypoints: boolean;
+  notify_contacts: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DeviceSession {
   id: string;
   user_id: string;
@@ -151,6 +164,7 @@ export interface PullUpdatesResult {
   geofences: Geofence[];
   profiles: Profile[];
   device_sessions: DeviceSession[];
+  privacy_settings: PrivacySettingsRow[];
 }
 
 export interface AuthResult {
