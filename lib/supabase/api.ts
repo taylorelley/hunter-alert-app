@@ -372,6 +372,66 @@ export async function respondToGroupInvite(
   return data as GroupInvitation;
 }
 
+export async function resendGroupInvitation(
+  client: SupabaseClient,
+  invitationId: string,
+): Promise<GroupInvitation> {
+  const { data: existingMetadata, error: fetchError } = await client
+    .from('group_invitations')
+    .select('metadata')
+    .eq('id', invitationId)
+    .single();
+
+  if (fetchError) {
+    throw fetchError;
+  }
+
+  const metadata = (existingMetadata?.metadata as Record<string, unknown> | null) ?? {};
+
+  const { data, error } = await client
+    .from('group_invitations')
+    .update({ metadata: { ...metadata, resent_at: new Date().toISOString() } })
+    .eq('id', invitationId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as GroupInvitation;
+}
+
+export async function withdrawGroupInvitation(
+  client: SupabaseClient,
+  invitationId: string,
+): Promise<GroupInvitation> {
+  const { data: existingMetadata, error: fetchError } = await client
+    .from('group_invitations')
+    .select('metadata')
+    .eq('id', invitationId)
+    .single();
+
+  if (fetchError) {
+    throw fetchError;
+  }
+
+  const metadata = (existingMetadata?.metadata as Record<string, unknown> | null) ?? {};
+
+  const { data, error } = await client
+    .from('group_invitations')
+    .update({ status: 'declined', metadata: { ...metadata, withdrawn_by_sender: true } })
+    .eq('id', invitationId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as GroupInvitation;
+}
+
 // Waypoint management functions
 export async function addWaypoint(
   client: SupabaseClient,
@@ -483,6 +543,52 @@ export async function toggleGeofence(
     geofence_id: geofenceId,
     is_enabled: enabled,
   });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Geofence;
+}
+
+export async function updateGeofence(
+  client: SupabaseClient,
+  params: {
+    geofenceId: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+    description?: string;
+  },
+): Promise<Geofence> {
+  const trimmedName = params.name.trim();
+
+  if (!trimmedName) {
+    throw new Error('Geofence name cannot be empty');
+  }
+  if (params.latitude < -90 || params.latitude > 90) {
+    throw new Error('Latitude must be between -90 and 90');
+  }
+  if (params.longitude < -180 || params.longitude > 180) {
+    throw new Error('Longitude must be between -180 and 180');
+  }
+  if (params.radiusMeters <= 0 || params.radiusMeters > 100000) {
+    throw new Error('Radius must be between 1 and 100000 meters');
+  }
+
+  const { data, error } = await client
+    .from('geofences')
+    .update({
+      name: trimmedName,
+      description: params.description ?? null,
+      latitude: params.latitude,
+      longitude: params.longitude,
+      radius_meters: params.radiusMeters,
+    })
+    .eq('id', params.geofenceId)
+    .select()
+    .single();
 
   if (error) {
     throw error;

@@ -1,11 +1,30 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Plus, ChevronRight, Users, MapPin, Shield, Settings, Bell, UserPlus, CheckCircle2, LogOut } from "lucide-react"
+import {
+  Plus,
+  ChevronRight,
+  Users,
+  MapPin,
+  Shield,
+  Settings,
+  Bell,
+  UserPlus,
+  CheckCircle2,
+  LogOut,
+  Trash2,
+  Pencil,
+  RefreshCcw,
+  Ban,
+  Loader2,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { useApp, type Group } from "./app-provider"
+import { useApp, type Geofence, type Group } from "./app-provider"
 import { cn } from "@/lib/utils"
+import { CreateGroupModal } from "./modals/create-group-modal"
+import { InviteMemberModal } from "./modals/invite-member-modal"
+import { GeofenceFormModal } from "./modals/geofence-form-modal"
 
 export function GroupsView() {
   const {
@@ -20,10 +39,26 @@ export function GroupsView() {
     joinGroup,
     leaveGroup,
     createGeofence,
+    updateGeofence,
+    deleteGeofence,
     toggleGeofenceAlerts,
+    resendGroupInvitation,
+    withdrawGroupInvitation,
   } = useApp()
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [inviteModalGroup, setInviteModalGroup] = useState<Group | null>(null)
+  const [geofenceModalState, setGeofenceModalState] = useState<{
+    mode: "create" | "edit"
+    groupId?: string | null
+    geofence?: Geofence | null
+  } | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [inviteActionError, setInviteActionError] = useState<string | null>(null)
+  const [invitationActionId, setInvitationActionId] = useState<string | null>(null)
+  const [geofenceActionId, setGeofenceActionId] = useState<string | null>(null)
+  const [responseError, setResponseError] = useState<string | null>(null)
 
   const filteredGeofences = useMemo(() => {
     return selectedGroup ? geofences.filter((item) => item.groupId === selectedGroup) : geofences
@@ -34,36 +69,30 @@ export function GroupsView() {
   }, [groupActivity, selectedGroup])
 
   const pendingInvitations = groupInvitations.filter((invite) => invite.status === "pending")
+  const groupOutgoingInvites = useMemo(() => {
+    return groupInvitations.filter((invite) => invite.groupId === selectedGroup)
+  }, [groupInvitations, selectedGroup])
 
-  const handleCreateGroup = async () => {
-    const name = window.prompt("Name your group")?.trim()
-    if (!name) return
-
-    const description = window.prompt("Description (optional)")?.trim()
-    setIsSubmitting(true)
-
+  const handleCreateGroupSubmit = async (payload: { name: string; description?: string }) => {
+    setActionError(null)
     try {
-      await createGroup(name, description)
+      await createGroup(payload.name, payload.description)
     } catch (error) {
-      console.error("Failed to create group:", error)
-      window.alert("Could not create the group. Please try again.")
-    } finally {
-      setIsSubmitting(false)
+      const message = error instanceof Error ? error.message : "Could not create the group. Please try again."
+      setActionError(message)
+      throw error
     }
   }
 
-  const handleInvite = async (groupId: string) => {
-    const email = window.prompt("Invite by email")?.trim()
-    if (!email) return
-    const role = window.prompt("Role (member/admin)", "member") === "admin" ? "admin" : "member"
-    setIsSubmitting(true)
+  const handleInviteSubmit = async (params: { email: string; role: "member" | "admin" }) => {
+    if (!inviteModalGroup) return
+    setInviteActionError(null)
     try {
-      await inviteToGroup(groupId, email, role)
+      await inviteToGroup(inviteModalGroup.id, params.email, params.role)
     } catch (error) {
-      console.error("Failed to send invitation:", error)
-      window.alert("Could not send the invitation. Please try again.")
-    } finally {
-      setIsSubmitting(false)
+      const message = error instanceof Error ? error.message : "Could not send the invitation. Please try again."
+      setInviteActionError(message)
+      throw error
     }
   }
 
@@ -77,59 +106,156 @@ export function GroupsView() {
         await joinGroup(group.id)
       }
     } catch (error) {
-      console.error("Failed to update membership:", error)
-      window.alert("Could not update group membership. Please try again.")
+      const message = error instanceof Error ? error.message : "Could not update group membership. Please try again."
+      setActionError(message)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleCreateGeofence = async (groupId?: string | null) => {
-    const name = window.prompt("Geofence name")?.trim()
-    if (!name) return
-    const latitude = Number(window.prompt("Center latitude", "0"))
-    const longitude = Number(window.prompt("Center longitude", "0"))
-    const radiusMeters = Number(window.prompt("Radius (meters)", "500"))
-
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return
-
-    setIsSubmitting(true)
+  const handleGeofenceSubmit = async (payload: {
+    name: string
+    latitude: number
+    longitude: number
+    radiusMeters: number
+    description?: string
+  }) => {
+    if (!geofenceModalState) return
+    setActionError(null)
     try {
-      await createGeofence({ name, latitude, longitude, radiusMeters, groupId: groupId ?? undefined })
+      if (geofenceModalState.mode === "edit" && geofenceModalState.geofence) {
+        await updateGeofence(geofenceModalState.geofence.id, payload)
+      } else {
+        await createGeofence({
+          ...payload,
+          groupId: geofenceModalState.groupId ?? undefined,
+        })
+      }
     } catch (error) {
-      console.error("Failed to create geofence:", error)
-      window.alert("Could not create the geofence. Please try again.")
-    } finally {
-      setIsSubmitting(false)
+      const message = error instanceof Error ? error.message : "Could not save the geofence. Please try again."
+      setActionError(message)
+      throw error
     }
   }
 
   const handleInvitationResponse = async (invitationId: string, decision: "accept" | "decline") => {
-    setIsSubmitting(true)
+    setInvitationActionId(invitationId)
+    setResponseError(null)
     try {
       await respondToInvitation(invitationId, decision)
     } catch (error) {
-      console.error("Failed to respond to invitation:", error)
-      window.alert("Could not update the invitation. Please try again.")
+      const message = error instanceof Error ? error.message : "Could not update the invitation. Please try again."
+      setResponseError(message)
     } finally {
-      setIsSubmitting(false)
+      setInvitationActionId(null)
     }
   }
 
-  return (
-    <div className="flex-1 overflow-y-auto pb-24">
-      <div className="px-4 py-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Groups</h1>
-          <Button className="gap-2" onClick={handleCreateGroup} disabled={isSubmitting}>
-            <Plus className="w-4 h-4" />
-            Create Group
-          </Button>
-        </div>
+  const handleResendInvitation = async (invitationId: string) => {
+    setInvitationActionId(invitationId)
+    setInviteActionError(null)
+    try {
+      await resendGroupInvitation(invitationId)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not resend the invite. Please try again."
+      setInviteActionError(message)
+    } finally {
+      setInvitationActionId(null)
+    }
+  }
 
-        {/* My Groups */}
-        <div className="space-y-3">
+  const handleWithdrawInvitation = async (invitationId: string) => {
+    setInvitationActionId(invitationId)
+    setInviteActionError(null)
+    try {
+      await withdrawGroupInvitation(invitationId)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not withdraw the invite. Please try again."
+      setInviteActionError(message)
+    } finally {
+      setInvitationActionId(null)
+    }
+  }
+
+  const handleToggleGeofenceAlerts = async (geofenceId: string, enabled: boolean) => {
+    setGeofenceActionId(geofenceId)
+    setActionError(null)
+    try {
+      await toggleGeofenceAlerts(geofenceId, enabled)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not update alerts. Please try again."
+      setActionError(message)
+    } finally {
+      setGeofenceActionId(null)
+    }
+  }
+
+  const handleDeleteGeofence = async (geofenceId: string) => {
+    setGeofenceActionId(geofenceId)
+    setActionError(null)
+    try {
+      await deleteGeofence(geofenceId)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not remove the geofence. Please try again."
+      setActionError(message)
+    } finally {
+      setGeofenceActionId(null)
+    }
+  }
+
+  const selectedGroupDetails = groups.find((group) => group.id === selectedGroup) ?? null
+
+  return (
+    <>
+      <CreateGroupModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onSubmit={handleCreateGroupSubmit}
+      />
+      <InviteMemberModal
+        isOpen={Boolean(inviteModalGroup)}
+        groupName={inviteModalGroup?.name}
+        onClose={() => setInviteModalGroup(null)}
+        onSubmit={handleInviteSubmit}
+      />
+      <GeofenceFormModal
+        isOpen={Boolean(geofenceModalState)}
+        mode={geofenceModalState?.mode ?? "create"}
+        groupName={
+          geofenceModalState?.geofence?.groupId
+            ? groups.find((group) => group.id === geofenceModalState.geofence?.groupId)?.name
+            : selectedGroupDetails?.name
+        }
+        initialValues={
+          geofenceModalState?.geofence
+            ? {
+                id: geofenceModalState.geofence.id,
+                name: geofenceModalState.geofence.name,
+                latitude: geofenceModalState.geofence.latitude,
+                longitude: geofenceModalState.geofence.longitude,
+                radiusMeters: geofenceModalState.geofence.radiusMeters,
+                description: geofenceModalState.geofence.description,
+              }
+            : undefined
+        }
+        onClose={() => setGeofenceModalState(null)}
+        onSubmit={handleGeofenceSubmit}
+      />
+
+      <div className="flex-1 overflow-y-auto pb-24">
+        <div className="px-4 py-6 space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold">Groups</h1>
+            <Button className="gap-2" onClick={() => setCreateModalOpen(true)}>
+              <Plus className="w-4 h-4" />
+              Create Group
+            </Button>
+          </div>
+          {actionError && <p className="text-sm text-danger">{actionError}</p>}
+
+          {/* My Groups */}
+          <div className="space-y-3">
           {groups.map((group) => {
             const isMember = group.members.some((member) => member.id === user?.id)
             const isOwner = group.role === "owner"
@@ -197,8 +323,10 @@ export function GroupsView() {
                             variant="ghost"
                             size="sm"
                             className="h-7 text-xs"
-                            onClick={() => handleInvite(group.id)}
-                            disabled={isSubmitting}
+                            onClick={() => {
+                              setInviteActionError(null)
+                              setInviteModalGroup(group)
+                            }}
                           >
                             <UserPlus className="w-3 h-3 mr-1" />
                             Invite
@@ -234,6 +362,62 @@ export function GroupsView() {
                         </div>
                       </div>
 
+                      {selectedGroup === group.id && groupOutgoingInvites.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold">Invitations</h4>
+                            {inviteActionError && <span className="text-xs text-danger">{inviteActionError}</span>}
+                          </div>
+                          <div className="space-y-2">
+                            {groupOutgoingInvites.map((invite) => {
+                              const isProcessing = invitationActionId === invite.id
+
+                              return (
+                                <div
+                                  key={invite.id}
+                                  className="flex items-center justify-between p-2 rounded-lg border border-border bg-muted/40"
+                                >
+                                  <div>
+                                    <p className="text-sm font-medium">
+                                      {invite.recipientEmail || "Pending recipient"}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground capitalize">
+                                      {invite.role} • {invite.status}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => handleResendInvitation(invite.id)}
+                                      disabled={isProcessing || invite.status !== "pending"}
+                                      title="Resend invitation"
+                                    >
+                                      {isProcessing ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <RefreshCcw className="w-4 h-4" />
+                                      )}
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => handleWithdrawInvitation(invite.id)}
+                                      disabled={isProcessing || invite.status !== "pending"}
+                                      title="Withdraw invitation"
+                                    >
+                                      {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+                                    </Button>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Quick Actions */}
                       <div className="flex gap-2">
                         <Button
@@ -259,8 +443,10 @@ export function GroupsView() {
                           variant="outline"
                           size="sm"
                           className="flex-1 bg-transparent"
-                          onClick={() => handleCreateGeofence(group.id)}
-                          disabled={isSubmitting}
+                          onClick={() => {
+                            setActionError(null)
+                            setGeofenceModalState({ mode: "create", groupId: group.id, geofence: null })
+                          }}
                         >
                           <Shield className="w-4 h-4 mr-1" />
                           Add Geofence
@@ -324,7 +510,15 @@ export function GroupsView() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Active Geofences</h2>
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleCreateGeofence(selectedGroup)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                setActionError(null)
+                setGeofenceModalState({ mode: "create", groupId: selectedGroup, geofence: null })
+              }}
+            >
               <Plus className="w-3 h-3 mr-1" />
               Add
             </Button>
@@ -332,31 +526,68 @@ export function GroupsView() {
           <div className="space-y-2">
             {filteredGeofences.map((geofence) => (
               <Card key={geofence.id}>
-                <CardContent className="p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/20">
-                      <Shield className="w-4 h-4 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">{geofence.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {geofence.notifyOnEntry || geofence.notifyOnExit
-                          ? `${geofence.notifyOnEntry ? "Entry" : ""}${
-                              geofence.notifyOnEntry && geofence.notifyOnExit ? " & " : ""
-                            }${geofence.notifyOnExit ? "Exit" : ""} alerts`
-                          : "No alerts"}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant={geofence.enabled ? "outline" : "ghost"}
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => toggleGeofenceAlerts(geofence.id, !geofence.enabled)}
-                    disabled={isSubmitting}
-                  >
-                    <Bell className={cn("w-4 h-4", geofence.enabled ? "text-primary" : "text-muted-foreground")} />
-                  </Button>
+                <CardContent className="p-3 flex items-center justify-between gap-3">
+                  {(() => {
+                    const isProcessing = geofenceActionId === geofence.id
+
+                    return (
+                      <>
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-primary/20">
+                            <Shield className="w-4 h-4 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{geofence.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {geofence.notifyOnEntry || geofence.notifyOnExit
+                                ? `${geofence.notifyOnEntry ? "Entry" : ""}${
+                                    geofence.notifyOnEntry && geofence.notifyOnExit ? " & " : ""
+                                  }${geofence.notifyOnExit ? "Exit" : ""} alerts`
+                                : "No alerts"}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {geofence.latitude.toFixed(4)}, {geofence.longitude.toFixed(4)} • {geofence.radiusMeters}m
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant={geofence.enabled ? "outline" : "ghost"}
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleToggleGeofenceAlerts(geofence.id, !geofence.enabled)}
+                            disabled={isProcessing}
+                          >
+                            {isProcessing ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Bell className={cn("w-4 h-4", geofence.enabled ? "text-primary" : "text-muted-foreground")} />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setGeofenceModalState({ mode: "edit", geofence, groupId: geofence.groupId })}
+                            disabled={isProcessing}
+                            title="Edit geofence"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleDeleteGeofence(geofence.id)}
+                            disabled={isProcessing}
+                            title="Remove geofence"
+                          >
+                            {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          </Button>
+                        </div>
+                      </>
+                    )
+                  })()}
                 </CardContent>
               </Card>
             ))}
@@ -366,8 +597,10 @@ export function GroupsView() {
         {/* Invitations */}
         {pendingInvitations.length > 0 && (
           <div className="space-y-2">
+          {responseError && <p className="text-xs text-danger">{responseError}</p>}
           {pendingInvitations.map((invite) => {
             const groupName = groups.find((group) => group.id === invite.groupId)?.name || invite.groupId
+            const isProcessing = invitationActionId === invite.id
 
             return (
               <Card key={invite.id} className="border-accent/30">
@@ -380,15 +613,21 @@ export function GroupsView() {
                       <h3 className="font-semibold">Pending Invitation</h3>
                       <p className="text-sm text-muted-foreground mt-1">You've been invited to join {groupName}</p>
                       <div className="flex gap-2 mt-3">
-                        <Button size="sm" onClick={() => handleInvitationResponse(invite.id, "accept")} disabled={isSubmitting}>
+                        <Button
+                          size="sm"
+                          onClick={() => handleInvitationResponse(invite.id, "accept")}
+                          disabled={isProcessing}
+                        >
+                          {isProcessing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
                           Accept
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleInvitationResponse(invite.id, "decline")}
-                          disabled={isSubmitting}
+                          disabled={isProcessing}
                         >
+                          {isProcessing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
                           Decline
                         </Button>
                       </div>
@@ -402,5 +641,6 @@ export function GroupsView() {
       )}
       </div>
     </div>
+    </>
   )
 }

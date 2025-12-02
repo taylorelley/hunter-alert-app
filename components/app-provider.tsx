@@ -9,12 +9,16 @@ import {
   createGroup as apiCreateGroup,
   addWaypoint as apiAddWaypoint,
   createGeofence as apiCreateGeofence,
+  deleteGeofence as apiDeleteGeofence,
   inviteToGroup as apiInviteToGroup,
   respondToGroupInvite as apiRespondToGroupInvite,
   joinGroup as apiJoinGroup,
   leaveGroup as apiLeaveGroup,
   toggleGeofence as apiToggleGeofence,
+  updateGeofence as apiUpdateGeofence,
   updateGeofenceAlerts as apiUpdateGeofenceAlerts,
+  resendGroupInvitation as apiResendGroupInvitation,
+  withdrawGroupInvitation as apiWithdrawGroupInvitation,
   recordDeviceSession,
   revokeDeviceSession as apiRevokeDeviceSession,
   listDeviceSessions,
@@ -262,7 +266,14 @@ interface AppContextValue extends AppState {
     groupId?: string
     conversationId?: string
   }) => Promise<void>
+  updateGeofence: (
+    geofenceId: string,
+    updates: { name: string; latitude: number; longitude: number; radiusMeters: number; description?: string },
+  ) => Promise<void>
+  deleteGeofence: (geofenceId: string) => Promise<void>
   inviteToGroup: (groupId: string, email: string, role?: "member" | "admin") => Promise<void>
+  resendGroupInvitation: (invitationId: string) => Promise<void>
+  withdrawGroupInvitation: (invitationId: string) => Promise<void>
   respondToInvitation: (invitationId: string, decision: "accept" | "decline") => Promise<void>
   joinGroup: (groupId: string) => Promise<void>
   leaveGroup: (groupId: string) => Promise<void>
@@ -1412,6 +1423,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [flush, session, supabase],
   )
 
+  const updateGeofence = useCallback(
+    async (
+      geofenceId: string,
+      updates: { name: string; latitude: number; longitude: number; radiusMeters: number; description?: string },
+    ) => {
+      if (!session) throw new Error("Sign-in required to update geofence")
+
+      const updated = await apiUpdateGeofence(supabase, { geofenceId, ...updates })
+      setBackendGeofences((prev) => mergeRecords(prev, [updated]))
+      await flush()
+    },
+    [flush, session, supabase],
+  )
+
+  const deleteGeofence = useCallback(
+    async (geofenceId: string) => {
+      if (!session) throw new Error("Sign-in required to delete geofence")
+
+      await apiDeleteGeofence(supabase, geofenceId)
+      setBackendGeofences((prev) => prev.filter((geofence) => geofence.id !== geofenceId))
+      await flush()
+    },
+    [flush, session, supabase],
+  )
+
   const inviteToGroup = useCallback(
     async (groupId: string, email: string, role: "member" | "admin" = "member") => {
       if (!session) throw new Error("Sign-in required to invite to group")
@@ -1428,6 +1464,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!session) throw new Error("Sign-in required to respond to invitation")
 
       const result = await apiRespondToGroupInvite(supabase, invitationId, decision)
+      setBackendGroupInvitations((prev) => mergeRecords(prev, [result]))
+      await flush()
+    },
+    [flush, session, supabase],
+  )
+
+  const resendGroupInvitation = useCallback(
+    async (invitationId: string) => {
+      if (!session) throw new Error("Sign-in required to resend invitation")
+
+      const result = await apiResendGroupInvitation(supabase, invitationId)
+      setBackendGroupInvitations((prev) => mergeRecords(prev, [result]))
+      await flush()
+    },
+    [flush, session, supabase],
+  )
+
+  const withdrawGroupInvitation = useCallback(
+    async (invitationId: string) => {
+      if (!session) throw new Error("Sign-in required to update invitation")
+
+      const result = await apiWithdrawGroupInvitation(supabase, invitationId)
       setBackendGroupInvitations((prev) => mergeRecords(prev, [result]))
       await flush()
     },
@@ -1779,7 +1837,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addWaypoint,
       createGroup,
       createGeofence,
+      updateGeofence,
+      deleteGeofence,
       inviteToGroup,
+      resendGroupInvitation,
+      withdrawGroupInvitation,
       respondToInvitation,
       joinGroup,
       leaveGroup,
@@ -1800,6 +1862,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       checkIn,
       createGeofence,
       createGroup,
+      deleteGeofence,
       deleteEmergencyContact,
       deviceSessionId,
       endTrip,
@@ -1813,6 +1876,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refresh,
       refreshDeviceSessions,
       respondToInvitation,
+      resendGroupInvitation,
       restorePremium,
       resolveSOS,
       revokeDeviceSession,
@@ -1828,7 +1892,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       triggerSOS,
       updatePrivacySettings,
       updateEmergencyContact,
+      updateGeofence,
       updateGeofenceAlerts,
+      withdrawGroupInvitation,
       updateTrip,
       user,
     ],
