@@ -118,12 +118,18 @@ export function ProfileView() {
 
   const handleSaveContact = async (contact: Omit<EmergencyContact, "id">) => {
     setContactError(null)
-    if (editingContact) {
-      await updateEmergencyContact(editingContact.id, contact)
-    } else {
-      await addEmergencyContact(contact)
+    try {
+      if (editingContact) {
+        await updateEmergencyContact(editingContact.id, contact)
+      } else {
+        await addEmergencyContact(contact)
+      }
+      setEditingContact(null)
+    } catch (error) {
+      console.error(error)
+      const message = error instanceof Error ? error.message : "Unable to save contact right now"
+      setContactError(message)
     }
-    setEditingContact(null)
   }
 
   const handleDeleteContact = async () => {
@@ -257,9 +263,11 @@ export function ProfileView() {
                       </div>
                       <div className="space-y-1">
                         <p className="font-medium leading-tight">{contact.name}</p>
-                        <p className="text-sm text-muted-foreground flex items-center gap-2">
-                          <Phone className="w-4 h-4" /> {contact.phone || "Missing phone"}
-                        </p>
+                        {contact.phone && (
+                          <p className="text-sm text-muted-foreground flex items-center gap-2">
+                            <Phone className="w-4 h-4" /> {contact.phone}
+                          </p>
+                        )}
                         {contact.email && (
                           <p className="text-sm text-muted-foreground flex items-center gap-2">
                             <Mail className="w-4 h-4" /> {contact.email}

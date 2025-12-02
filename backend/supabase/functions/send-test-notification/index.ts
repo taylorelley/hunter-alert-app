@@ -42,17 +42,23 @@ async function sendSms(contact: ContactPayload, body: string) {
     Body: body,
   })
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: "Basic " + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`),
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: params,
-  })
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: "Basic " + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params,
+    })
 
-  const text = await response.text()
-  return { ok: response.ok, status: response.status, message: text }
+    const text = await response.text()
+    return { ok: response.ok, status: response.status, message: text }
+  } catch (error) {
+    console.error("SMS send failed", error)
+    const message = error instanceof Error ? error.message : "Failed to send SMS"
+    return { ok: false, status: 500, message }
+  }
 }
 
 async function sendEmail(contact: ContactPayload, subject: string, body: string) {
@@ -61,22 +67,28 @@ async function sendEmail(contact: ContactPayload, subject: string, body: string)
     return { ok: true, status: 202, message: "Simulated email delivery" }
   }
 
-  const response = await fetch("https://api.postmarkapp.com/email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Postmark-Server-Token": POSTMARK_TOKEN,
-    },
-    body: JSON.stringify({
-      From: POSTMARK_FROM,
-      To: contact.email,
-      Subject: subject,
-      TextBody: body,
-    }),
-  })
+  try {
+    const response = await fetch("https://api.postmarkapp.com/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Postmark-Server-Token": POSTMARK_TOKEN,
+      },
+      body: JSON.stringify({
+        From: POSTMARK_FROM,
+        To: contact.email,
+        Subject: subject,
+        TextBody: body,
+      }),
+    })
 
-  const text = await response.text()
-  return { ok: response.ok, status: response.status, message: text }
+    const text = await response.text()
+    return { ok: response.ok, status: response.status, message: text }
+  } catch (error) {
+    console.error("Email send failed", error)
+    const message = error instanceof Error ? error.message : "Failed to send email"
+    return { ok: false, status: 500, message }
+  }
 }
 
 serve(async (req) => {

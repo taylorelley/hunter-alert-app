@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { X, MessageSquare, Mail, Phone, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -19,9 +19,16 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const closeTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current)
+        closeTimeoutRef.current = null
+      }
+      return
+    }
     setError(null)
     setSuccessMessage(null)
     setIsSending(false)
@@ -29,6 +36,15 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
     setContactId(preferred?.id ?? "")
     setChannel(preferred?.phone ? "sms" : "email")
   }, [contacts, isOpen])
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current)
+        closeTimeoutRef.current = null
+      }
+    }
+  }, [])
 
   if (!isOpen) return null
 
@@ -44,8 +60,14 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
     setIsSending(true)
     try {
       await onSend({ contactId, channel })
-      setSuccessMessage("Test notification queued. We will try SMS first, then email if available.")
-      setTimeout(onClose, 1200)
+      setSuccessMessage(`Test notification queued. Sending via ${channel === "sms" ? "SMS" : "email"}.`)
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current)
+      }
+      closeTimeoutRef.current = window.setTimeout(() => {
+        closeTimeoutRef.current = null
+        onClose()
+      }, 1200)
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : "Unable to send the test notification")
@@ -70,8 +92,11 @@ export function TestNotificationModal({ isOpen, onClose, contacts, onSend }: Tes
 
           <CardContent className="p-4 space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Choose contact</label>
+              <label htmlFor="contact-select" className="text-sm font-medium">
+                Choose contact
+              </label>
               <select
+                id="contact-select"
                 className="w-full p-3 rounded-lg bg-input border border-border text-sm"
                 value={contactId}
                 onChange={(e) => setContactId(e.target.value)}

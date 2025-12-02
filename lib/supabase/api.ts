@@ -588,5 +588,13 @@ export async function sendTestNotification(
     throw error;
   }
 
-  return (data as Record<string, unknown> | null) ?? { success: true };
+  if (data == null) {
+    console.error('sendTestNotification returned no data', {
+      contactId: contact.id,
+      channel,
+    });
+    throw new Error('Unexpected empty response from send-test-notification');
+  }
+
+  return data as Record<string, unknown>;
 }

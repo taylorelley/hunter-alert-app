@@ -108,6 +108,7 @@ export function EmergencyContactModal({ isOpen, onClose, onSubmit, initialContac
                   Phone (SMS)
                 </label>
                 <input
+                  type="tel"
                   className="w-full p-3 rounded-lg bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
@@ -120,6 +121,7 @@ export function EmergencyContactModal({ isOpen, onClose, onSubmit, initialContac
                   Email (optional)
                 </label>
                 <input
+                  type="email"
                   className="w-full p-3 rounded-lg bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}

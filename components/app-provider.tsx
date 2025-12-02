@@ -698,7 +698,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       setState((prev) => ({ ...prev, emergencyContacts: normalized }))
     },
-    [profile, session, session?.user?.id, supabase],
+    [profile, session, supabase],
   )
 
   const addEmergencyContact = useCallback(

@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { X, AlertTriangle, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -21,10 +22,22 @@ export function DeleteContactModal({
   contactDetails,
   errorMessage,
 }: DeleteContactModalProps) {
+  const [isSaving, setIsSaving] = useState(false)
+
   if (!isOpen) return null
 
+  const handleClose = () => {
+    if (isSaving) return
+    onClose()
+  }
+
   const handleConfirm = async () => {
-    await onConfirm()
+    setIsSaving(true)
+    try {
+      await onConfirm()
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -36,7 +49,12 @@ export function DeleteContactModal({
               <AlertTriangle className="w-5 h-5" />
               <h2 className="text-lg font-semibold">Delete contact</h2>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors" aria-label="Close">
+            <button
+              onClick={handleClose}
+              className="p-2 hover:bg-muted rounded-lg transition-colors"
+              aria-label="Close"
+              disabled={isSaving}
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -50,12 +68,17 @@ export function DeleteContactModal({
             {errorMessage && <p className="text-sm text-danger">{errorMessage}</p>}
 
             <div className="flex items-center justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={onClose}>
+              <Button variant="ghost" onClick={handleClose} disabled={isSaving}>
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={handleConfirm} className="flex items-center gap-2">
+              <Button
+                variant="destructive"
+                onClick={handleConfirm}
+                className="flex items-center gap-2"
+                disabled={isSaving}
+              >
                 <Trash2 className="w-4 h-4" />
-                Delete
+                {isSaving ? "Deleting…" : "Delete"}
               </Button>
             </div>
           </CardContent>
