@@ -190,6 +190,11 @@ describe('supabase api wrapper', () => {
     const geofences = [{ id: 1 }];
     const profiles = [{ id: 1 }];
     const device_sessions = [{ id: 1 }, { id: 2 }];
+    const privacy_settings = [
+      { user_id: 'user-1', share_location: true },
+      { user_id: 'user-2', share_location: false },
+      { user_id: 'user-3', share_location: true },
+    ];
     (client.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         conversations,
@@ -202,6 +207,7 @@ describe('supabase api wrapper', () => {
         geofences,
         profiles,
         device_sessions,
+        privacy_settings,
       },
       error: null,
     });
@@ -218,6 +224,7 @@ describe('supabase api wrapper', () => {
       geofences,
       profiles,
       device_sessions: device_sessions.slice(0, 2),
+      privacy_settings: privacy_settings.slice(0, 2),
     });
   });
 

@@ -28,7 +28,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
-import { EmergencyContact, useApp } from "./app-provider"
+import { EmergencyContact, PrivacySettings, useApp } from "./app-provider"
 import { useNetwork } from "./network-provider"
 import { AdminDebugPanel } from "./admin-debug-panel"
 import { BillingSettings } from "./billing-settings"
@@ -53,12 +53,11 @@ export function ProfileView() {
     updateEmergencyContact,
     deleteEmergencyContact,
     sendTestContactNotification,
+    privacySettings,
+    updatePrivacySettings,
   } = useApp()
   const { state: network } = useNetwork()
-  const [locationSharing, setLocationSharing] = useState(true)
-  const [tripVisibility, setTripVisibility] = useState(true)
-  const [waypointSharing, setWaypointSharing] = useState(true)
-  const [anonymousMode, setAnonymousMode] = useState(true)
+  const [privacyError, setPrivacyError] = useState<string | null>(null)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [authError, setAuthError] = useState<string | null>(null)
@@ -155,6 +154,16 @@ export function ProfileView() {
       const message = error instanceof Error ? error.message : "Unable to send a test message right now"
       setContactError(message)
       throw error instanceof Error ? error : new Error(message)
+    }
+  }
+
+  const handlePrivacyToggle = async (changes: Partial<PrivacySettings>) => {
+    setPrivacyError(null)
+    try {
+      await updatePrivacySettings(changes)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save privacy preference"
+      setPrivacyError(message)
     }
   }
 
@@ -337,7 +346,10 @@ export function ProfileView() {
                     <p className="text-xs text-muted-foreground">Share with contacts during trips</p>
                   </div>
                 </div>
-                <Switch checked={locationSharing} onCheckedChange={setLocationSharing} />
+                <Switch
+                  checked={privacySettings.shareLocation}
+                  onCheckedChange={(value) => handlePrivacyToggle({ shareLocation: value })}
+                />
               </div>
 
               <div className="flex items-center justify-between p-4">
@@ -348,7 +360,10 @@ export function ProfileView() {
                     <p className="text-xs text-muted-foreground">Let group members see your trips</p>
                   </div>
                 </div>
-                <Switch checked={tripVisibility} onCheckedChange={setTripVisibility} />
+                <Switch
+                  checked={privacySettings.shareTrips}
+                  onCheckedChange={(value) => handlePrivacyToggle({ shareTrips: value })}
+                />
               </div>
 
               <div className="flex items-center justify-between p-4">
@@ -359,7 +374,10 @@ export function ProfileView() {
                     <p className="text-xs text-muted-foreground">Share waypoints with groups</p>
                   </div>
                 </div>
-                <Switch checked={waypointSharing} onCheckedChange={setWaypointSharing} />
+                <Switch
+                  checked={privacySettings.shareWaypoints}
+                  onCheckedChange={(value) => handlePrivacyToggle({ shareWaypoints: value })}
+                />
               </div>
 
               <div className="flex items-center justify-between p-4">
@@ -367,12 +385,16 @@ export function ProfileView() {
                   <EyeOff className="w-5 h-5 text-muted-foreground" />
                   <div>
                     <p className="font-medium">Anonymous on Map</p>
-                    <p className="text-xs text-muted-foreground">Show identifier instead of name</p>
+                    <p className="text-xs text-muted-foreground">Hide your identity on shared maps</p>
                   </div>
                 </div>
-                <Switch checked={anonymousMode} onCheckedChange={setAnonymousMode} />
+                <Switch
+                  checked={!privacySettings.showOnMap}
+                  onCheckedChange={(value) => handlePrivacyToggle({ showOnMap: !value })}
+                />
               </div>
             </CardContent>
+            {privacyError && <p className="text-sm text-danger px-4 pb-4">{privacyError}</p>}
           </Card>
         </div>
 
