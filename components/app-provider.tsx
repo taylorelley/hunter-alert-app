@@ -38,7 +38,7 @@ import { Device } from "@capacitor/device"
 import { persistCachedDeviceSessions, readCachedDeviceSessions } from "@/lib/storage/device-sessions"
 import { getClientSessionId } from "@/lib/device/session-id"
 
-const FREE_MIN_CHECKIN_CADENCE_HOURS = 6
+export const FREE_MIN_CHECKIN_CADENCE_HOURS = 6
 const FREE_HISTORY_DAYS = 14
 const PREMIUM_HISTORY_DAYS = 90
 const FREE_MAX_CHECK_INS = 20
@@ -503,8 +503,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         is_premium: false,
         privacy_settings: { shareLocation: true, showOnMap: true, notifyContacts: true },
         metadata: {},
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
       }
 
       const { error: profileError } = await supabase.from("profiles").upsert({
@@ -648,6 +646,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const persistEntitlement = useCallback(
     async (active: boolean, receipt?: string | null) => {
+      const previousIsPremium = state.isPremium
+      const previousReceipt = billingReceipt
       setState((prev) => ({ ...prev, isPremium: active }))
       setBillingReceipt((prev) => receipt ?? prev)
       if (!session) return active
@@ -658,22 +658,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const updatedProfile = { ...baseProfile, is_premium: active }
 
-      const { error } = await supabase
-        .from("profiles")
-        .update({ is_premium: active })
-        .eq("id", session.user.id)
+      const attemptPersist = async () =>
+        supabase.from("profiles").update({ is_premium: active }).eq("id", session.user.id)
 
-      if (error) {
-        console.error("Failed to persist entitlement", error)
-        setBillingError(error.message)
-        return active
+      const firstAttempt = await attemptPersist()
+      const retryAttempt = firstAttempt.error ? await attemptPersist() : firstAttempt
+
+      if (retryAttempt.error) {
+        console.error("Failed to persist entitlement", retryAttempt.error)
+        setBillingError(retryAttempt.error.message)
+        setState((prev) => ({ ...prev, isPremium: previousIsPremium }))
+        setBillingReceipt(previousReceipt)
+        return previousIsPremium
       }
 
+      setBillingError(null)
       setProfile((prev) => (prev ? { ...prev, is_premium: active } : prev))
       setBackendProfiles((prev) => mergeRecords(prev, [updatedProfile]))
       return active
     },
-    [backendProfiles, profile, session, supabase],
+    [backendProfiles, billingReceipt, profile, session, state.isPremium, supabase],
   )
 
   const applyRemote = useCallback(
@@ -776,7 +780,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const loadBillingOfferings = useCallback(async () => {
     try {
-      const offerings = await getOfferings(session?.user.id)
+      const offerings = await getOfferings(session?.user?.id)
       setBillingOfferings(offerings)
       setBillingError(null)
     } catch (error) {

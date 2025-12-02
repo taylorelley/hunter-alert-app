@@ -32,8 +32,8 @@ export function AuthView() {
         setMessage("Account created. Check your email for verification if required.")
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to authenticate"
-      setError(message)
+      const errorMessage = err instanceof Error ? err.message : "Unable to authenticate"
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -136,10 +136,15 @@ export function AuthView() {
                 </div>
               </div>
 
-              {error && <p className="text-sm text-danger">{error}</p>}
-              {message && <p className="text-sm text-safe">{message}</p>}
+              {error && <p id="auth-error" className="text-sm text-danger">{error}</p>}
+              {message && <p id="auth-message" className="text-sm text-safe">{message}</p>}
 
-              <Button type="submit" className="w-full" disabled={loading || !email || !password}>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading || !email || !password}
+                aria-describedby={error ? "auth-error" : undefined}
+              >
                 {loading ? "Processing..." : mode === "login" ? "Log in" : "Create account"}
               </Button>
             </form>
