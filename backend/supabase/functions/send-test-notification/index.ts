@@ -119,7 +119,7 @@ async function sendEmail(contact: ContactPayload, subject: string, body: string)
   }
 }
 
-serve(async (req) => {
+serve(async (req): Promise<Response> => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 })
   }
@@ -157,7 +157,15 @@ serve(async (req) => {
     return new Response("Unauthorized", { status: 401 })
   }
 
-  const channel: "sms" | "email" = payload.channel ?? (contact.phone ? "sms" : "email")
+  const normalizedChannel =
+    typeof payload.channel === "string" && payload.channel.trim()
+      ? payload.channel.trim().toLowerCase()
+      : undefined
+  const channel: "sms" | "email" = normalizedChannel === "sms" || normalizedChannel === "email"
+    ? normalizedChannel
+    : contact.phone
+      ? "sms"
+      : "email"
   const attempts: Array<{ via: string; status: number; ok: boolean; message: string }> = []
   const message = `Hunter Alert test notification for ${contact.name}. Triggered by ${user.email ?? user.id}.`
 
