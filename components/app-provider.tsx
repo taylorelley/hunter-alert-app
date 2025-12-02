@@ -503,6 +503,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         is_premium: false,
         privacy_settings: { shareLocation: true, showOnMap: true, notifyContacts: true },
         metadata: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       }
 
       const { error: profileError } = await supabase.from("profiles").upsert({

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type JSX } from "react"
 import { AppProvider, type Trip } from "@/components/app-provider"
 import { NetworkProvider } from "@/components/network-provider"
 import { MobileNav } from "@/components/mobile-nav"
