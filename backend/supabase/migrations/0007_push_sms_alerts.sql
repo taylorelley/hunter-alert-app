@@ -1,5 +1,13 @@
 -- Add push notification subscriptions and SMS alert preferences with RLS.
 
+-- Provide compatibility trigger function expected by earlier migrations.
+create or replace function public.trigger_set_updated_at()
+returns trigger as $$
+begin
+  return public.set_updated_at();
+end;
+$$ language plpgsql;
+
 -- Push subscriptions mapped to device sessions
 create table if not exists push_subscriptions (
   id uuid primary key default uuid_generate_v4(),
@@ -56,6 +64,8 @@ comment on table sms_alert_subscriptions is 'Per-user SMS alert subscription sta
 create trigger set_sms_alert_subscriptions_updated_at
 before update on sms_alert_subscriptions
 for each row execute procedure trigger_set_updated_at();
+
+create index if not exists idx_sms_alert_subscriptions_user_updated on sms_alert_subscriptions (user_id, updated_at desc);
 
 alter table sms_alert_subscriptions enable row level security;
 
@@ -172,6 +182,8 @@ $$ language plpgsql security invoker set search_path = public;
 comment on function public.confirm_sms_verification is 'Validate an SMS verification code and enable alerts for the authenticated user.';
 
 -- Extend pull_updates with push + SMS preferences
+drop function if exists public.pull_updates(timestamptz);
+
 create or replace function public.pull_updates(
   since timestamptz default null,
   max_rows int default null
@@ -388,4 +400,4 @@ begin
 end;
 $$ language plpgsql security invoker set search_path = public;
 
-comment on function public.pull_updates is 'Return constrained batches of conversations, messages, sync cursors, and alert preferences while enforcing privacy settings.';
+comment on function public.pull_updates(timestamptz, int) is 'Return constrained batches of conversations, messages, sync cursors, and alert preferences while enforcing privacy settings.';
