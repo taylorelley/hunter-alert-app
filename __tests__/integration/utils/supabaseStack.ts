@@ -51,6 +51,19 @@ function readLocalEnv() {
     }, {});
 }
 
+function parseEnvOutput(output: string): Record<string, string> {
+  return output
+    .split(/\r?\n/)
+    .filter((line) => line && !line.trim().startsWith('#'))
+    .reduce<Record<string, string>>((acc, line) => {
+      const [key, ...rest] = line.split('=');
+      if (key) {
+        acc[key.trim()] = rest.join('=');
+      }
+      return acc;
+    }, {});
+}
+
 function parseStatusPayload(payload: unknown, envVars: Record<string, string>): SupabaseStack {
   const getNested = (value: unknown, path: string[]): unknown => {
     let current: unknown = value;
@@ -92,6 +105,14 @@ function parseStatusPayload(payload: unknown, envVars: Record<string, string>): 
   return { apiUrl, anonKey, serviceRoleKey, dbUrl };
 }
 
+function safeParseJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
 export async function startSupabaseStack(): Promise<SupabaseStack> {
   // Ensure any old containers are cleared out to avoid port collisions.
   await runSupabase(['stop']).catch(() => undefined);
@@ -103,9 +124,12 @@ export async function startSupabaseStack(): Promise<SupabaseStack> {
   await runSupabase(['db', 'reset', '--yes']);
 
   const envVars = readLocalEnv();
-  const statusOutput = await runSupabase(['status', '--output=json'], true);
-  const parsed = statusOutput ? JSON.parse(statusOutput) : {};
-  const stack = parseStatusPayload(parsed, envVars);
+  const statusOutput = await runSupabase(['status', '--output=json'], true).catch(() => '');
+  const statusEnvOutput = await runSupabase(['status', '--output=env'], true).catch(() => '');
+
+  const parsed = statusOutput ? safeParseJson(statusOutput) : {};
+  const mergedEnv = { ...envVars, ...parseEnvOutput(statusEnvOutput) };
+  const stack = parseStatusPayload(parsed, mergedEnv);
 
   if (!stack.anonKey || !stack.serviceRoleKey) {
     throw new Error('Supabase keys missing; ensure CLI is logged in and start completed');
