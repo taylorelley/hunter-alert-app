@@ -1,9 +1,4 @@
 project_id = "satellite-ready"
-organization_id = "your-org-id"
-
-[project]
-api = "https://your-project.supabase.co"
-backend = "postgres"
 
 [db]
 port = 54322
@@ -11,9 +6,6 @@ major_version = 15
 
 [api]
 schemas = ["public"]
-
-[functions]
-ignores = []
 
 [functions.send_message_batch]
 verify_jwt = true
