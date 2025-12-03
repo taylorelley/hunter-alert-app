@@ -1,4 +1,5 @@
 name: Setup pnpm and Node.js
+description: Sets up pnpm and Node.js for workflow jobs
 
 runs:
   using: composite

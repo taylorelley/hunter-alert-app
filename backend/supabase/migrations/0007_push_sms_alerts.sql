@@ -65,6 +65,8 @@ create trigger set_sms_alert_subscriptions_updated_at
 before update on sms_alert_subscriptions
 for each row execute procedure trigger_set_updated_at();
 
+create index if not exists idx_sms_alert_subscriptions_user_updated on sms_alert_subscriptions (user_id, updated_at desc);
+
 alter table sms_alert_subscriptions enable row level security;
 
 create policy sms_alert_subscriptions_select on sms_alert_subscriptions
