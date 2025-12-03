@@ -97,7 +97,7 @@ export async function startSupabaseStack(): Promise<SupabaseStack> {
   await runSupabase(['stop']).catch(() => undefined);
 
   // Launch a minimal stack to keep resource usage low in CI.
-  await runSupabase(['start', '-x', 'studio', '-x', 'inbucket', '-x', 'imgproxy', '-x', 'edge-runtime']);
+  await runSupabase(['start', '-x', 'studio', '-x', 'imgproxy', '-x', 'edge-runtime']);
 
   // Reset ensures migrations are applied from scratch for deterministic tests.
   await runSupabase(['db', 'reset', '--force']);
