@@ -100,7 +100,7 @@ export async function startSupabaseStack(): Promise<SupabaseStack> {
   await runSupabase(['start', '-x', 'studio', '-x', 'imgproxy', '-x', 'edge-runtime', '-x', 'inbucket']);
 
   // Reset ensures migrations are applied from scratch for deterministic tests.
-  await runSupabase(['db', 'reset', '--force']);
+  await runSupabase(['db', 'reset', '--yes']);
 
   const envVars = readLocalEnv();
   const statusOutput = await runSupabase(['status', '--output=json'], true);
