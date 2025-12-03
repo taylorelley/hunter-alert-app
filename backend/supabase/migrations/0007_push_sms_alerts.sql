@@ -182,6 +182,8 @@ $$ language plpgsql security invoker set search_path = public;
 comment on function public.confirm_sms_verification is 'Validate an SMS verification code and enable alerts for the authenticated user.';
 
 -- Extend pull_updates with push + SMS preferences
+drop function if exists public.pull_updates(timestamptz);
+
 create or replace function public.pull_updates(
   since timestamptz default null,
   max_rows int default null
@@ -398,4 +400,4 @@ begin
 end;
 $$ language plpgsql security invoker set search_path = public;
 
-comment on function public.pull_updates is 'Return constrained batches of conversations, messages, sync cursors, and alert preferences while enforcing privacy settings.';
+comment on function public.pull_updates(timestamptz, int) is 'Return constrained batches of conversations, messages, sync cursors, and alert preferences while enforcing privacy settings.';
