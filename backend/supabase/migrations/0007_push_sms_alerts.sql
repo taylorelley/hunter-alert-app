@@ -1,5 +1,13 @@
 -- Add push notification subscriptions and SMS alert preferences with RLS.
 
+-- Provide compatibility trigger function expected by earlier migrations.
+create or replace function public.trigger_set_updated_at()
+returns trigger as $$
+begin
+  return public.set_updated_at();
+end;
+$$ language plpgsql;
+
 -- Push subscriptions mapped to device sessions
 create table if not exists push_subscriptions (
   id uuid primary key default uuid_generate_v4(),
