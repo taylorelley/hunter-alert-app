@@ -39,18 +39,28 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
     void doRefresh()
   }, [doRefresh])
 
+  // Parse date-only strings as UTC to avoid timezone shift
+  const parseDate = (value: Date | string): Date => {
+    if (value instanceof Date) return value
+    // Detect YYYY-MM-DD format and parse as UTC
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return new Date(`${value}T00:00:00Z`)
+    }
+    return new Date(value)
+  }
+
   const historyTrips = useMemo(() => {
     return trips
       .filter((trip) => trip.id !== currentTrip?.id)
       .sort((a, b) => {
-        const aTime = typeof a.startDate === "string" ? new Date(a.startDate).getTime() : a.startDate.getTime()
-        const bTime = typeof b.startDate === "string" ? new Date(b.startDate).getTime() : b.startDate.getTime()
+        const aTime = parseDate(a.startDate).getTime()
+        const bTime = parseDate(b.startDate).getTime()
         return bTime - aTime
       })
   }, [currentTrip?.id, trips])
 
-  const formatDate = (date: Date | string) => {
-    const dateObj = typeof date === "string" ? new Date(date) : date
+  const formatDate = (date: Date | string): string => {
+    const dateObj = parseDate(date)
     return dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" })
   }
 

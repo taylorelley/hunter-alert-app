@@ -73,8 +73,8 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
     switch (step) {
       case 1: {
         if (!destination.trim() || !startDate || !endDate) return false
-        // Validate that end date is on/after start date
-        return parseLocalDateInput(endDate) >= parseLocalDateInput(startDate)
+        // Validate that end date is after start date
+        return parseLocalDateInput(endDate) > parseLocalDateInput(startDate)
       }
       case 2:
         return checkInCadence > 0
@@ -244,8 +244,8 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
                         />
                       </div>
                     </div>
-                    {startDate && endDate && parseLocalDateInput(endDate) < parseLocalDateInput(startDate) && (
-                      <p className="text-sm text-danger">End date must be on or after start date</p>
+                    {startDate && endDate && parseLocalDateInput(endDate) <= parseLocalDateInput(startDate) && (
+                      <p className="text-sm text-danger">End date must be after start date</p>
                     )}
                   </div>
                 </div>

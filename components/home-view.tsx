@@ -44,6 +44,13 @@ interface HomeViewProps {
   onSOS: () => void
 }
 
+// Parse trip dates handling timezone-fragile date-only strings
+const parseTripDateMs = (value: Date | string): number => {
+  if (value instanceof Date) return value.getTime()
+  // Treat YYYY-MM-DD as a local calendar day to avoid UTC shift
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`).getTime() : new Date(value).getTime()
+}
+
 export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, onSOS }: HomeViewProps) {
   const { currentTrip, nextCheckInDue, checkInStatus, isPremium, waypoints } = useApp()
   const { state: networkState } = useNetwork()
@@ -247,22 +254,17 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
                   <Navigation className="w-4 h-4" />
                   <span>
                     Day{" "}
-                    {Math.ceil(
-                      (Date.now() -
-                        (typeof currentTrip.startDate === "string"
-                          ? new Date(currentTrip.startDate).getTime()
-                          : currentTrip.startDate.getTime())) /
-                        (1000 * 60 * 60 * 24),
+                    {Math.max(
+                      1,
+                      Math.ceil((Date.now() - parseTripDateMs(currentTrip.startDate)) / (1000 * 60 * 60 * 24)),
                     )}{" "}
                     of{" "}
-                    {Math.ceil(
-                      ((typeof currentTrip.endDate === "string"
-                        ? new Date(currentTrip.endDate).getTime()
-                        : currentTrip.endDate.getTime()) -
-                        (typeof currentTrip.startDate === "string"
-                          ? new Date(currentTrip.startDate).getTime()
-                          : currentTrip.startDate.getTime())) /
-                        (1000 * 60 * 60 * 24),
+                    {Math.max(
+                      1,
+                      Math.ceil(
+                        (parseTripDateMs(currentTrip.endDate) - parseTripDateMs(currentTrip.startDate)) /
+                          (1000 * 60 * 60 * 24),
+                      ),
                     )}
                   </span>
                 </div>
