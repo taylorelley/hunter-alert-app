@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useApp, type Waypoint } from "./app-provider"
 import { cn } from "@/lib/utils"
 import { calculateDistance, clearWatch, watchPosition, type Coordinates } from "@/lib/geolocation"
@@ -127,6 +128,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
   const [showNearbyHunters, setShowNearbyHunters] = useState(true)
   const [selectedWaypoint, setSelectedWaypoint] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
   const hasAutoCenteredRef = useRef(false)
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
@@ -334,16 +336,20 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
   }, [])
 
   const handleDeleteWaypoint = useCallback(async (waypointId: string, waypointName: string) => {
-    if (window.confirm(`Delete waypoint "${waypointName}"? This action cannot be undone.`)) {
-      try {
-        await deleteWaypoint(waypointId)
-        setSelectedWaypoint(null)
-      } catch (error) {
-        console.error("Failed to delete waypoint:", error)
-        alert("Failed to delete waypoint. Please try again.")
-      }
+    setDeleteConfirm({ id: waypointId, name: waypointName })
+  }, [])
+
+  const confirmDeleteWaypoint = useCallback(async () => {
+    if (!deleteConfirm) return
+    try {
+      await deleteWaypoint(deleteConfirm.id)
+      setSelectedWaypoint(null)
+      setDeleteConfirm(null)
+    } catch (error) {
+      console.error("Failed to delete waypoint:", error)
+      throw error
     }
-  }, [deleteWaypoint])
+  }, [deleteConfirm, deleteWaypoint])
 
   return (
     <div className="flex-1 relative overflow-hidden">
@@ -519,6 +525,18 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
           </Card>
         </div>
       )}
+
+      {/* Delete Waypoint Confirmation */}
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        onOpenChange={(open) => !open && setDeleteConfirm(null)}
+        title="Delete Waypoint"
+        description={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={confirmDeleteWaypoint}
+      />
     </div>
   )
 }

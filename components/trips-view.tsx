@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Plus, ChevronRight, Calendar, Clock, MapPin, CheckCircle2, AlertCircle, X, Pencil, RefreshCcw, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Trip, useApp } from "./app-provider"
 import { cn } from "@/lib/utils"
 
@@ -18,6 +19,8 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showFullTimeline, setShowFullTimeline] = useState(false)
+  const [endTripConfirm, setEndTripConfirm] = useState(false)
+  const [deleteTripConfirm, setDeleteTripConfirm] = useState<Trip | null>(null)
 
   const doRefresh = useCallback(async () => {
     setIsRefreshing(true)
@@ -52,33 +55,41 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
 
   const handleEndTrip = useCallback(async () => {
     if (!currentTrip) return
-    if (window.confirm(`End trip to ${currentTrip.destination}? This will mark the trip as completed.`)) {
-      try {
-        setError(null)
-        await endTrip()
-      } catch (err) {
-        console.error("Failed to end trip:", err)
-        setError("Failed to end trip. Please try again.")
-      }
+    setEndTripConfirm(true)
+  }, [currentTrip])
+
+  const confirmEndTrip = useCallback(async () => {
+    try {
+      setError(null)
+      await endTrip()
+      setEndTripConfirm(false)
+    } catch (err) {
+      console.error("Failed to end trip:", err)
+      setError("Failed to end trip. Please try again.")
+      throw err
     }
-  }, [currentTrip, endTrip])
+  }, [endTrip])
 
   const handleDeleteTrip = useCallback(async (trip: Trip, event?: React.MouseEvent) => {
     // Stop event propagation if called from within a clickable card
     if (event) {
       event.stopPropagation()
     }
+    setDeleteTripConfirm(trip)
+  }, [])
 
-    if (window.confirm(`Delete trip to ${trip.destination}? This action cannot be undone.`)) {
-      try {
-        setError(null)
-        await deleteTrip(trip.id)
-      } catch (err) {
-        console.error("Failed to delete trip:", err)
-        setError("Failed to delete trip. Please try again.")
-      }
+  const confirmDeleteTrip = useCallback(async () => {
+    if (!deleteTripConfirm) return
+    try {
+      setError(null)
+      await deleteTrip(deleteTripConfirm.id)
+      setDeleteTripConfirm(null)
+    } catch (err) {
+      console.error("Failed to delete trip:", err)
+      setError("Failed to delete trip. Please try again.")
+      throw err
     }
-  }, [deleteTrip])
+  }, [deleteTripConfirm, deleteTrip])
 
   const allCheckIns = currentTrip?.checkIns ?? []
   const displayedCheckIns = showFullTimeline ? allCheckIns : allCheckIns.slice(0, 3)
@@ -347,6 +358,30 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
           </div>
         )}
       </div>
+
+      {/* End Trip Confirmation */}
+      <ConfirmDialog
+        open={endTripConfirm}
+        onOpenChange={setEndTripConfirm}
+        title="End Trip"
+        description={`End trip to ${currentTrip?.destination}? This will mark the trip as completed.`}
+        confirmText="End Trip"
+        cancelText="Cancel"
+        variant="default"
+        onConfirm={confirmEndTrip}
+      />
+
+      {/* Delete Trip Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTripConfirm}
+        onOpenChange={(open) => !open && setDeleteTripConfirm(null)}
+        title="Delete Trip"
+        description={`Delete trip to ${deleteTripConfirm?.destination}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={confirmDeleteTrip}
+      />
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { getCustomerInfo, getOfferings, purchasePackage, restorePurchases, type 
 import {
   authenticate,
   createGroup as apiCreateGroup,
+  updateGroup as apiUpdateGroup,
   addWaypoint as apiAddWaypoint,
   deleteWaypoint as apiDeleteWaypoint,
   createGeofence as apiCreateGeofence,
@@ -299,6 +300,7 @@ interface AppContextValue extends AppState {
   addWaypoint: (waypoint: Omit<Waypoint, "id" | "createdAt">) => Promise<void>
   deleteWaypoint: (waypointId: string) => Promise<void>
   createGroup: (name: string, description?: string) => Promise<void>
+  updateGroup: (groupId: string, updates: { name?: string; description?: string }) => Promise<void>
   createGeofence: (params: {
     name: string
     latitude: number
@@ -1624,6 +1626,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [flush, session, supabase],
   )
 
+  const updateGroup = useCallback(
+    async (groupId: string, updates: { name?: string; description?: string }) => {
+      if (!session) throw new Error("Sign-in required to update group")
+
+      try {
+        const result = await apiUpdateGroup(supabase, groupId, updates)
+        setBackendGroups((prev) => mergeRecords(prev, [result]))
+        await flush() // Trigger sync to get latest data
+      } catch (error) {
+        console.error("Error updating group:", error)
+        throw error
+      }
+    },
+    [flush, session, supabase],
+  )
+
   const createGeofence = useCallback(
     async (params: {
       name: string
@@ -2129,6 +2147,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addWaypoint,
       deleteWaypoint,
       createGroup,
+      updateGroup,
       createGeofence,
       updateGeofence,
       deleteGeofence,
@@ -2155,6 +2174,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       checkIn,
       createGeofence,
       createGroup,
+      updateGroup,
       deleteGeofence,
       deleteEmergencyContact,
       deleteTrip,
