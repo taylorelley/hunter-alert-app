@@ -31,8 +31,10 @@ export function normalizePhone(phone: string): string {
 
   // If no country code, assume US (+1)
   if (!cleaned.startsWith('+')) {
-    // Remove leading 1 if present for US numbers
-    const digits = cleaned.replace(/^1/, '');
+    // Remove leading 1 only if input has 11 digits (US country code + 10-digit number)
+    const digits = cleaned.length === 11 && cleaned.startsWith('1')
+      ? cleaned.slice(1)
+      : cleaned;
     return `+1${digits}`;
   }
 

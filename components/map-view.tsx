@@ -26,6 +26,7 @@ import { useApp, type Waypoint } from "./app-provider"
 import { cn } from "@/lib/utils"
 import { calculateDistance, clearWatch, watchPosition, type Coordinates } from "@/lib/geolocation"
 import { useNetwork } from "./network-provider"
+import { toast } from "sonner"
 
 const WAYPOINT_ICONS: Record<Waypoint["type"], typeof MapPin> = {
   camp: Tent,
@@ -328,9 +329,10 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
     } else if (navigator.clipboard) {
       try {
         await navigator.clipboard.writeText(shareText)
-        alert("Waypoint coordinates copied to clipboard!")
+        toast.success("Waypoint coordinates copied to clipboard!")
       } catch (error) {
         console.error("Failed to copy to clipboard:", error)
+        toast.error("Failed to copy to clipboard")
       }
     }
   }, [])

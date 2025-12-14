@@ -65,12 +65,13 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
 
   const canProceed = () => {
     switch (step) {
-      case 1:
+      case 1: {
         if (!destination.trim() || !startDate || !endDate) return false
         // Validate that end date is after start date
         const start = new Date(startDate)
         const end = new Date(endDate)
         return end >= start
+      }
       case 2:
         return checkInCadence > 0
       case 3:
