@@ -1,4 +1,9 @@
-import { CONSTRAINED_ENV_LIMITS, REQUIRED_ENV_VARS } from '@/config/env-requirements'
+import {
+  CONSTRAINED_ENV_LIMITS,
+  REQUIRED_ENV_VARS,
+  type ConstrainedEnvLimit,
+  type RequiredEnvVar,
+} from '@/config/env-requirements.mjs'
 
 export type SettingSource = 'env' | 'default' | 'clamped'
 
@@ -69,16 +74,12 @@ function resolveNumberSetting(definition: {
   }
 }
 
-const limitDefs = CONSTRAINED_ENV_LIMITS as unknown as Array<{
-  key: string
-  min: number
-  max: number
-  defaultValue: number
-  description: string
-}>
-
-const limits = Object.fromEntries(
-  limitDefs.map((definition) => [definition.key, resolveNumberSetting(definition)]),
+const limits = CONSTRAINED_ENV_LIMITS.reduce(
+  (acc, definition) => ({
+    ...acc,
+    [definition.key]: resolveNumberSetting(definition),
+  }),
+  {} as Record<ConstrainedEnvLimit['key'], NumberSetting>,
 )
 
 const supabaseUrl =
@@ -112,6 +113,6 @@ export const appConfig: AppConfig = {
   },
 }
 
-export const missingRequiredEnv = REQUIRED_ENV_VARS.filter(
-  (entry) => !process.env[entry.key],
+export const missingRequiredEnv = REQUIRED_ENV_VARS.filter((entry: RequiredEnvVar) =>
+  !process.env[entry.key],
 ).map((entry) => entry.key)

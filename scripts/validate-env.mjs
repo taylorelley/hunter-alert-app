@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'url'
-import { CONSTRAINED_ENV_LIMITS, REQUIRED_ENV_VARS } from '../config/env-requirements.js'
+import { CONSTRAINED_ENV_LIMITS, REQUIRED_ENV_VARS } from '../config/env-requirements.mjs'
 
 function normalizeNumber(value, { min, max, defaultValue }) {
   if (value === undefined || value === null || value === '') {
