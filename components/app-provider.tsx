@@ -8,6 +8,7 @@ import {
   authenticate,
   createGroup as apiCreateGroup,
   addWaypoint as apiAddWaypoint,
+  deleteWaypoint as apiDeleteWaypoint,
   createGeofence as apiCreateGeofence,
   deleteGeofence as apiDeleteGeofence,
   inviteToGroup as apiInviteToGroup,
@@ -293,8 +294,10 @@ interface AppContextValue extends AppState {
   startTrip: (trip: Omit<Trip, "id" | "checkIns" | "status">) => Promise<void>
   updateTrip: (tripId: string, trip: Omit<Trip, "id" | "checkIns">) => Promise<void>
   endTrip: () => Promise<void>
+  deleteTrip: (tripId: string) => Promise<void>
   checkIn: (status: "ok" | "need-help", notes: string) => Promise<void>
   addWaypoint: (waypoint: Omit<Waypoint, "id" | "createdAt">) => Promise<void>
+  deleteWaypoint: (waypointId: string) => Promise<void>
   createGroup: (name: string, description?: string) => Promise<void>
   createGeofence: (params: {
     name: string
@@ -1469,6 +1472,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await flush()
   }, [flush, session, state.currentTrip, supabase])
 
+  const deleteTrip = useCallback(
+    async (tripId: string) => {
+      if (!session) throw new Error("Sign-in required to delete trip")
+
+      try {
+        const { error } = await supabase.from("conversations").delete().eq("id", tripId)
+
+        if (error) throw error
+
+        // Update local state
+        setConversations((prev) => prev.filter((conversation) => conversation.id !== tripId))
+
+        // If deleting the current trip, clear it from state
+        setState((prev) => ({
+          ...prev,
+          currentTrip: prev.currentTrip?.id === tripId ? null : prev.currentTrip,
+          trips: prev.trips.filter((trip) => trip.id !== tripId),
+        }))
+
+        await flush()
+      } catch (error) {
+        console.error("Error deleting trip:", error)
+        throw error
+      }
+    },
+    [flush, session, supabase],
+  )
+
   const checkIn = useCallback(
     async (statusValue: "ok" | "need-help", notes: string) => {
       if (!state.currentTrip || !session) throw new Error("Active trip and session required to check in")
@@ -1557,6 +1588,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     },
     [flush, session, state.currentTrip?.id, state.privacySettings.shareWaypoints, supabase],
+  )
+
+  const deleteWaypoint = useCallback(
+    async (waypointId: string) => {
+      if (!session) throw new Error("Sign-in required to delete waypoint")
+
+      try {
+        await apiDeleteWaypoint(supabase, waypointId)
+
+        // Optimistically update local state
+        setBackendWaypoints((prev) => prev.filter((waypoint) => waypoint.id !== waypointId))
+        await flush() // Trigger sync to get latest data
+      } catch (error) {
+        console.error("Error deleting waypoint:", error)
+        throw error
+      }
+    },
+    [flush, session, supabase],
   )
 
   const createGroup = useCallback(
@@ -2074,9 +2123,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       restorePremium,
       startTrip,
       endTrip,
+      deleteTrip,
       updateTrip,
       checkIn,
       addWaypoint,
+      deleteWaypoint,
       createGroup,
       createGeofence,
       updateGeofence,
@@ -2106,6 +2157,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createGroup,
       deleteGeofence,
       deleteEmergencyContact,
+      deleteTrip,
+      deleteWaypoint,
       deviceSessionId,
       endTrip,
       inviteToGroup,

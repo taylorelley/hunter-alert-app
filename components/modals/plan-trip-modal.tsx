@@ -66,7 +66,11 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
   const canProceed = () => {
     switch (step) {
       case 1:
-        return destination.trim() !== "" && startDate && endDate
+        if (!destination.trim() || !startDate || !endDate) return false
+        // Validate that end date is after start date
+        const start = new Date(startDate)
+        const end = new Date(endDate)
+        return end >= start
       case 2:
         return checkInCadence > 0
       case 3:
@@ -212,25 +216,30 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Start Date</label>
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                      />
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Start Date</label>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="w-full p-3 rounded-lg bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">End Date</label>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="w-full p-3 rounded-lg bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">End Date</label>
-                      <input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                      />
-                    </div>
+                    {startDate && endDate && new Date(endDate) < new Date(startDate) && (
+                      <p className="text-sm text-danger">End date must be after start date</p>
+                    )}
                   </div>
                 </div>
               )}

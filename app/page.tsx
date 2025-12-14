@@ -41,6 +41,7 @@ function HunterAlertApp(): JSX.Element {
               setTripToEdit(null)
               setShowPlanTrip(true)
             }}
+            onSOS={() => setShowSOS(true)}
           />
         )}
         {activeTab === "map" && <MapView onAddWaypoint={() => setShowAddWaypoint(true)} />}

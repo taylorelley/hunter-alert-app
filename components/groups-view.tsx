@@ -248,7 +248,24 @@ export function GroupsView() {
 
           {/* My Groups */}
           <div className="space-y-3">
-          {groups.map((group) => {
+          {groups.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-12 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
+                  <Users className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">No Groups Yet</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Create a group to collaborate with other hunters and share locations
+                </p>
+                <Button onClick={() => setCreateModalOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Your First Group
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            groups.map((group) => {
             const isMember = group.members.some((member) => member.id === user?.id)
             const isOwner = group.role === "owner"
 
@@ -469,15 +486,23 @@ export function GroupsView() {
                 </CardContent>
               </Card>
             )
-          })}
+          }))}
         </div>
 
         {/* Group Activity Feed */}
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Recent Activity</h2>
           <Card>
-            <CardContent className="p-0 divide-y divide-border">
-              {filteredActivity.map((activity) => (
+            <CardContent className={cn(filteredActivity.length === 0 ? "p-8 text-center" : "p-0 divide-y divide-border")}>
+              {filteredActivity.length === 0 ? (
+                <div>
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
+                    <Bell className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">No recent activity</p>
+                </div>
+              ) : (
+                filteredActivity.map((activity) => (
                 <div key={activity.id} className="flex items-center gap-3 p-4">
                   <div
                     className={cn(
@@ -504,7 +529,7 @@ export function GroupsView() {
                     {activity.createdAt.toLocaleTimeString()}
                   </span>
                 </div>
-              ))}
+              )))}
             </CardContent>
           </Card>
         </div>

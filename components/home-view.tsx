@@ -41,9 +41,10 @@ interface HomeViewProps {
   onCheckIn: () => void
   onAddWaypoint: () => void
   onStartTrip: () => void
+  onSOS: () => void
 }
 
-export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: HomeViewProps) {
+export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, onSOS }: HomeViewProps) {
   const { currentTrip, nextCheckInDue, checkInStatus, isPremium, waypoints } = useApp()
   const { state: networkState } = useNetwork()
   const { connectivity, constrained } = networkState
@@ -287,7 +288,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
             <Button
               variant="outline"
               className="h-20 flex-col gap-2 bg-card hover:bg-muted border-danger/30"
-              onClick={() => {}}
+              onClick={onSOS}
             >
               <AlertTriangle className="w-6 h-6 text-danger" />
               <span className="text-danger">SOS</span>
