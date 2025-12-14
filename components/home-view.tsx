@@ -34,9 +34,10 @@ import {
   type WeatherData,
   formatCondition,
 } from "@/lib/weather"
+import type { TabId } from "./mobile-nav"
 
 interface HomeViewProps {
-  onNavigate: (tab: string) => void
+  onNavigate: (tab: TabId) => void
   onCheckIn: () => void
   onAddWaypoint: () => void
   onStartTrip: () => void

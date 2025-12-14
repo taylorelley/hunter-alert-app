@@ -1,15 +1,34 @@
 "use client"
 
-import { Signal, Battery, Cloud, CloudOff, Bell, Shield, Timer } from "lucide-react"
+import { CheckCheck, CloudOff, Loader2, RadioTower, Satellite, Shield, UserRound, Wifi } from "lucide-react"
+import type { JSX } from "react"
 import { useApp } from "./app-provider"
 import { useNetwork } from "./network-provider"
 import { cn } from "@/lib/utils"
 
-export function StatusHeader() {
-  const { isPremium, currentTrip, checkInStatus, syncStatus, lastSyncedAt } = useApp()
+interface StatusHeaderProps {
+  onOpenAccount: () => void
+  isAccountActive?: boolean
+}
+
+export function StatusHeader({ onOpenAccount, isAccountActive = false }: StatusHeaderProps): JSX.Element {
+  const { isPremium, currentTrip, checkInStatus, syncStatus, lastSyncedAt, isSyncing } = useApp()
   const { state: network } = useNetwork()
   const connectivityLabel = network.connectivity === "offline" ? "Offline" : network.connectivity
   const constrainedLabel = network.ultraConstrained ? "Ultra-constrained" : network.constrained ? "Constrained" : null
+
+  const connectivityIcon = (() => {
+    switch (network.connectivity) {
+      case "wifi":
+        return <Wifi className="w-4 h-4 text-safe" />
+      case "cellular":
+        return <RadioTower className="w-4 h-4 text-primary" />
+      case "satellite":
+        return <Satellite className="w-4 h-4 text-warning" />
+      default:
+        return <CloudOff className="w-4 h-4 text-offline" />
+    }
+  })()
 
   return (
     <header className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border safe-area-top">
@@ -47,29 +66,34 @@ export function StatusHeader() {
           )}
 
           <div className="flex items-center gap-2 text-muted-foreground">
-            {network.connectivity !== "offline" ? (
-              <Cloud className="w-4 h-4 text-safe" />
-            ) : (
-              <CloudOff className="w-4 h-4 text-offline" />
-            )}
+            {connectivityIcon}
             <span className="text-xs font-medium capitalize">{connectivityLabel}</span>
             {constrainedLabel && (
               <span className="px-2 py-0.5 rounded-full text-[11px] bg-warning/20 text-warning font-semibold">
                 {constrainedLabel}
               </span>
             )}
-            <Signal className="w-4 h-4" />
-            <Battery className="w-4 h-4" />
             {syncStatus && (
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                <Timer className="w-3 h-3" />
-                {syncStatus}
+                {isSyncing ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <CheckCheck className="w-3 h-3 text-safe" />
+                )}
+                <span className="font-medium">{syncStatus}</span>
                 {lastSyncedAt && <span className="hidden sm:inline">• {new Date(lastSyncedAt).toLocaleTimeString()}</span>}
               </span>
             )}
-            <button className="relative p-1 hover:bg-muted rounded-lg transition-colors" aria-label="Notifications">
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-danger" />
+            <button
+              type="button"
+              onClick={onOpenAccount}
+              className={cn(
+                "relative p-2 rounded-full transition-colors",
+                isAccountActive ? "bg-muted text-primary" : "hover:bg-muted",
+              )}
+              aria-label="Profile and notifications"
+            >
+              <UserRound className="w-4 h-4" />
             </button>
           </div>
         </div>

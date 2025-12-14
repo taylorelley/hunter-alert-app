@@ -3,7 +3,7 @@
 import { useState, type JSX } from "react"
 import { AppProvider, type Trip } from "@/components/app-provider"
 import { NetworkProvider } from "@/components/network-provider"
-import { MobileNav } from "@/components/mobile-nav"
+import { MobileNav, type TabId } from "@/components/mobile-nav"
 import { StatusHeader } from "@/components/status-header"
 import { HomeView } from "@/components/home-view"
 import { MapView } from "@/components/map-view"
@@ -17,8 +17,10 @@ import { PlanTripModal } from "@/components/modals/plan-trip-modal"
 import { AuthView } from "@/components/auth-view"
 import { useApp } from "@/components/app-provider"
 
+type ActiveTab = TabId | "profile"
+
 function HunterAlertApp(): JSX.Element {
-  const [activeTab, setActiveTab] = useState("home")
+  const [activeTab, setActiveTab] = useState<ActiveTab>("home")
   const [showCheckIn, setShowCheckIn] = useState(false)
   const [showSOS, setShowSOS] = useState(false)
   const [showAddWaypoint, setShowAddWaypoint] = useState(false)
@@ -27,12 +29,12 @@ function HunterAlertApp(): JSX.Element {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-background">
-      <StatusHeader />
+      <StatusHeader onOpenAccount={() => setActiveTab("profile")} isAccountActive={activeTab === "profile"} />
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {activeTab === "home" && (
           <HomeView
-            onNavigate={setActiveTab}
+            onNavigate={(tab) => setActiveTab(tab)}
             onCheckIn={() => setShowCheckIn(true)}
             onAddWaypoint={() => setShowAddWaypoint(true)}
             onStartTrip={() => {
@@ -58,7 +60,11 @@ function HunterAlertApp(): JSX.Element {
         {activeTab === "profile" && <ProfileView />}
       </main>
 
-      <MobileNav activeTab={activeTab} onTabChange={setActiveTab} onSOSPress={() => setShowSOS(true)} />
+      <MobileNav
+        activeTab={activeTab === "profile" ? "home" : activeTab}
+        onTabChange={(tab: TabId) => setActiveTab(tab)}
+        onSOSPress={() => setShowSOS(true)}
+      />
 
       {/* Modals */}
       <CheckInModal isOpen={showCheckIn} onClose={() => setShowCheckIn(false)} />
