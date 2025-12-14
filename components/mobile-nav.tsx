@@ -59,6 +59,7 @@ export function MobileNav({ activeTab, onTabChange, onSOSPress }: MobileNavProps
         {leftTabs.map(renderTab)}
 
         <button
+          type="button"
           onClick={onSOSPress}
           className={cn(
             "relative flex flex-col items-center justify-center w-16 h-16 -mt-6 rounded-full transition-all",

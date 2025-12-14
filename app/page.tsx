@@ -17,9 +17,9 @@ import { PlanTripModal } from "@/components/modals/plan-trip-modal"
 import { AuthView } from "@/components/auth-view"
 import { useApp } from "@/components/app-provider"
 
-function HunterAlertApp(): JSX.Element {
-  type ActiveTab = TabId | "profile"
+type ActiveTab = TabId | "profile"
 
+function HunterAlertApp(): JSX.Element {
   const [activeTab, setActiveTab] = useState<ActiveTab>("home")
   const [showCheckIn, setShowCheckIn] = useState(false)
   const [showSOS, setShowSOS] = useState(false)
@@ -34,7 +34,7 @@ function HunterAlertApp(): JSX.Element {
       <main className="flex-1 flex flex-col overflow-hidden">
         {activeTab === "home" && (
           <HomeView
-            onNavigate={(tab) => setActiveTab(tab as ActiveTab)}
+            onNavigate={(tab) => setActiveTab(tab)}
             onCheckIn={() => setShowCheckIn(true)}
             onAddWaypoint={() => setShowAddWaypoint(true)}
             onStartTrip={() => {

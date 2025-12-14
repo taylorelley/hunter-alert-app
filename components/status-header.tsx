@@ -85,6 +85,7 @@ export function StatusHeader({ onOpenAccount, isAccountActive = false }: StatusH
               </span>
             )}
             <button
+              type="button"
               onClick={onOpenAccount}
               className={cn(
                 "relative p-2 rounded-full transition-colors",
