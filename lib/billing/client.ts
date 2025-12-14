@@ -205,14 +205,11 @@ export async function purchasePackage(
   packageId: string,
   offeringId?: string,
   userId?: string,
-): Promise<BillingResult> {
+): Promise<BillingResult | null> {
   const purchases = await loadPurchases(userId)
   if (!purchases?.purchasePackage) {
     console.warn("Purchases client unavailable; skipping purchase attempt")
-    return {
-      entitlementActive: false,
-      productId: packageId,
-    }
+    return null
   }
 
   try {
@@ -234,20 +231,15 @@ export async function purchasePackage(
     }
   } catch (error) {
     console.error("Failed to purchase package", error)
-    return {
-      entitlementActive: false,
-      productId: packageId,
-    }
+    return null
   }
 }
 
-export async function restorePurchases(userId?: string): Promise<BillingResult> {
+export async function restorePurchases(userId?: string): Promise<BillingResult | null> {
   const purchases = await loadPurchases(userId)
   if (!purchases?.restorePurchases) {
     console.warn("Purchases client unavailable; cannot restore purchases")
-    return {
-      entitlementActive: false,
-    }
+    return null
   }
 
   try {
@@ -259,9 +251,7 @@ export async function restorePurchases(userId?: string): Promise<BillingResult> 
     }
   } catch (error) {
     console.error("Failed to restore purchases", error)
-    return {
-      entitlementActive: false,
-    }
+    return null
   }
 }
 

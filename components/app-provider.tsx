@@ -1155,6 +1155,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBillingError(null)
       try {
         const result = await purchasePackage(targetPackage, targetOffering, session.user.id)
+        if (!result) {
+          setBillingError("Purchases are currently unavailable on this device.")
+          return
+        }
         await persistEntitlement(result.entitlementActive, result.receipt ?? null)
         if (!result.entitlementActive) {
           setBillingError("Purchase completed but entitlement is inactive. Restore purchases or contact support.")
@@ -1176,6 +1180,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBillingError(null)
     try {
       const result = await restorePurchases(session.user.id)
+      if (!result) {
+        setBillingError("Purchases are currently unavailable on this device.")
+        return
+      }
       await persistEntitlement(result.entitlementActive, result.receipt ?? null)
       if (!result.entitlementActive) {
         setBillingError("No active subscriptions were found to restore.")
