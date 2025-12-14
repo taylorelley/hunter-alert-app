@@ -38,7 +38,7 @@ import { useNetwork } from "./network-provider"
 import { useSyncEngine } from "@/lib/sync/use-sync-engine"
 import { PendingAction, SyncStatus } from "@/lib/sync/types"
 import { getCurrentPosition } from "@/lib/geolocation"
-import { toISOString } from "@/lib/date-utils"
+import { toISOString, parseTripDateMs } from "@/lib/date-utils"
 import {
   PullUpdatesResult,
   Group as APIGroup,
@@ -1291,13 +1291,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS),
       }))
       .sort((a, b) => {
-        // Parse dates handling YYYY-MM-DD as local midnight to avoid UTC shift
-        const parseDateMs = (value: Date | string): number => {
-          if (value instanceof Date) return value.getTime()
-          return /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`).getTime() : new Date(value).getTime()
-        }
-        const aTime = parseDateMs(a.startDate)
-        const bTime = parseDateMs(b.startDate)
+        const aTime = parseTripDateMs(a.startDate)
+        const bTime = parseTripDateMs(b.startDate)
         return bTime - aTime
       })
 
@@ -1455,14 +1450,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const endTrip = useCallback(async () => {
     if (!session || !state.currentTrip) return
-    // Convert Date | string to ISO string format, normalizing date-only strings
-    const toISOString = (date: Date | string): string => {
-      if (typeof date === "string") {
-        // Normalize YYYY-MM-DD to stable timestamp (local midnight)
-        return /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00`).toISOString() : date
-      }
-      return date.toISOString()
-    }
 
     const metadata = {
       destination: state.currentTrip.destination,
