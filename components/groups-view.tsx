@@ -201,18 +201,6 @@ export function GroupsView() {
     }
   }
 
-  const handleDeleteGeofence = async (geofenceId: string) => {
-    setGeofenceActionId(geofenceId)
-    try {
-      await deleteGeofence(geofenceId)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not remove the geofence. Please try again."
-      toast.error(message)
-    } finally {
-      setGeofenceActionId(null)
-    }
-  }
-
   const confirmDeleteGeofence = async () => {
     if (!deleteGeofenceConfirm) return
     setGeofenceActionId(deleteGeofenceConfirm.id)
