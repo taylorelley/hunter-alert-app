@@ -64,6 +64,12 @@ function parseEnvOutput(output: string): Record<string, string> {
     }, {});
 }
 
+const normalizeKey = (value: string | undefined): string => {
+  if (!value) return '';
+  const trimmed = value.trim();
+  return trimmed.replace(/^['"]|['"]$/g, '');
+};
+
 function parseStatusPayload(payload: unknown, envVars: Record<string, string>): SupabaseStack {
   const getNested = (value: unknown, path: string[]): unknown => {
     let current: unknown = value;
@@ -84,18 +90,20 @@ function parseStatusPayload(payload: unknown, envVars: Record<string, string>): 
     'http://127.0.0.1:54321';
 
   const anonKey =
-    asString(getNested(payload, ['services', 'api', 'anonKey'])) ||
-    asString(getNested(payload, ['api', 'anonKey'])) ||
-    envVars.SUPABASE_ANON_KEY ||
-    envVars.ANON_KEY ||
-    '';
+    normalizeKey(
+      asString(getNested(payload, ['services', 'api', 'anonKey'])) ||
+        asString(getNested(payload, ['api', 'anonKey'])) ||
+        envVars.SUPABASE_ANON_KEY ||
+        envVars.ANON_KEY,
+    );
 
   const serviceRoleKey =
-    asString(getNested(payload, ['services', 'api', 'serviceRoleKey'])) ||
-    asString(getNested(payload, ['api', 'serviceRoleKey'])) ||
-    envVars.SUPABASE_SERVICE_ROLE_KEY ||
-    envVars.SERVICE_ROLE_KEY ||
-    '';
+    normalizeKey(
+      asString(getNested(payload, ['services', 'api', 'serviceRoleKey'])) ||
+        asString(getNested(payload, ['api', 'serviceRoleKey'])) ||
+        envVars.SUPABASE_SERVICE_ROLE_KEY ||
+        envVars.SERVICE_ROLE_KEY,
+    );
 
   const dbUrl =
     asString(getNested(payload, ['db', 'url'])) ||
