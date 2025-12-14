@@ -1,21 +1,30 @@
 "use client"
 
-import { Home, Map, Compass, Users, AlertTriangle } from "lucide-react"
+import { Home, Map as MapIcon, Compass, Users, AlertTriangle, type LucideIcon } from "lucide-react"
+import type { JSX } from "react"
 import { useApp } from "./app-provider"
 import { cn } from "@/lib/utils"
 
+export type TabId = "home" | "map" | "trips" | "groups"
+
 interface MobileNavProps {
-  activeTab: string
-  onTabChange: (tab: string) => void
+  activeTab: TabId
+  onTabChange: (tab: TabId) => void
   onSOSPress: () => void
 }
 
-export function MobileNav({ activeTab, onTabChange, onSOSPress }: MobileNavProps) {
+interface TabConfig {
+  id: TabId
+  label: string
+  icon: LucideIcon
+}
+
+export function MobileNav({ activeTab, onTabChange, onSOSPress }: MobileNavProps): JSX.Element {
   const { isOnline, sosActive } = useApp()
 
-  const tabs = [
+  const tabs: TabConfig[] = [
     { id: "home", label: "Home", icon: Home },
-    { id: "map", label: "Map", icon: Map },
+    { id: "map", label: "Map", icon: MapIcon },
     { id: "trips", label: "Trips", icon: Compass },
     { id: "groups", label: "Groups", icon: Users },
   ]
@@ -23,7 +32,7 @@ export function MobileNav({ activeTab, onTabChange, onSOSPress }: MobileNavProps
   const leftTabs = tabs.slice(0, 2)
   const rightTabs = tabs.slice(2)
 
-  const renderTab = (tab: (typeof tabs)[number]) => {
+  const renderTab = (tab: TabConfig): JSX.Element => {
     const Icon = tab.icon
     const isActive = activeTab === tab.id
 

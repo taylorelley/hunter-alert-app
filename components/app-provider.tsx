@@ -34,7 +34,7 @@ import {
 } from "@/lib/supabase/api"
 import { useNetwork } from "./network-provider"
 import { useSyncEngine } from "@/lib/sync/use-sync-engine"
-import { PendingAction } from "@/lib/sync/types"
+import { PendingAction, SyncStatus } from "@/lib/sync/types"
 import { getCurrentPosition } from "@/lib/geolocation"
 import {
   PullUpdatesResult,
@@ -264,7 +264,8 @@ interface AppContextValue extends AppState {
   user: User | null
   profile: APIProfile | null
   pendingActions: PendingAction[]
-  syncStatus: string
+  syncStatus: SyncStatus
+  isSyncing: boolean
   lastSyncedAt: string | null
   billingOfferings: BillingOffering[]
   billingLoading: boolean
@@ -2046,6 +2047,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       profile,
       pendingActions: pending,
       syncStatus: status,
+      isSyncing: status === "sending" || status === "pulling",
       lastSyncedAt,
       billingOfferings,
       billingLoading,

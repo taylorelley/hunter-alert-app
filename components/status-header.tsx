@@ -1,6 +1,7 @@
 "use client"
 
 import { CheckCheck, CloudOff, Loader2, RadioTower, Satellite, Shield, UserRound, Wifi } from "lucide-react"
+import type { JSX } from "react"
 import { useApp } from "./app-provider"
 import { useNetwork } from "./network-provider"
 import { cn } from "@/lib/utils"
@@ -10,8 +11,8 @@ interface StatusHeaderProps {
   isAccountActive?: boolean
 }
 
-export function StatusHeader({ onOpenAccount, isAccountActive = false }: StatusHeaderProps) {
-  const { isPremium, currentTrip, checkInStatus, syncStatus, lastSyncedAt } = useApp()
+export function StatusHeader({ onOpenAccount, isAccountActive = false }: StatusHeaderProps): JSX.Element {
+  const { isPremium, currentTrip, checkInStatus, syncStatus, lastSyncedAt, isSyncing } = useApp()
   const { state: network } = useNetwork()
   const connectivityLabel = network.connectivity === "offline" ? "Offline" : network.connectivity
   const constrainedLabel = network.ultraConstrained ? "Ultra-constrained" : network.constrained ? "Constrained" : null
@@ -28,8 +29,6 @@ export function StatusHeader({ onOpenAccount, isAccountActive = false }: StatusH
         return <CloudOff className="w-4 h-4 text-offline" />
     }
   })()
-
-  const isSyncing = Boolean(syncStatus && syncStatus.toLowerCase().includes("sync"))
 
   return (
     <header className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border safe-area-top">
