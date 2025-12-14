@@ -132,8 +132,14 @@ export async function startSupabaseStack(): Promise<SupabaseStack> {
   await runSupabase(['db', 'reset', '--yes']);
 
   const envVars = readLocalEnv();
-  const statusOutput = await runSupabase(['status', '--output=json'], true).catch(() => '');
-  const statusEnvOutput = await runSupabase(['status', '--output=env'], true).catch(() => '');
+  const statusOutput = await runSupabase(['status', '--output=json'], true).catch((err) => {
+    console.warn('Failed to retrieve JSON status:', err?.message ?? err);
+    return '';
+  });
+  const statusEnvOutput = await runSupabase(['status', '--output=env'], true).catch((err) => {
+    console.warn('Failed to retrieve env status:', err?.message ?? err);
+    return '';
+  });
 
   const parsed = statusOutput ? safeParseJson(statusOutput) : {};
   const mergedEnv = { ...envVars, ...parseEnvOutput(statusEnvOutput) };
@@ -183,7 +189,10 @@ export async function createUserClient(
 
   const { error: profileError } = await adminClient.from('profiles').upsert(profile);
   if (profileError) {
-    throw profileError;
+    throw new Error(
+      `Failed to upsert profile for ${email} (${userResult.data.user.id}): ${profileError.message}`,
+      { cause: profileError },
+    );
   }
 
   const authClient = createClient(stack.apiUrl, stack.anonKey, {
