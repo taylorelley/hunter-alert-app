@@ -92,7 +92,24 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
   const refreshRef = useRef<(() => void) | undefined>(undefined)
 
   const refresh = useCallback(() => {
-    computeNetworkState().then(setState)
+    computeNetworkState().then((next) => {
+      setState((prev) => {
+        const changed =
+          prev.connectivity !== next.connectivity ||
+          prev.constrained !== next.constrained ||
+          prev.ultraConstrained !== next.ultraConstrained ||
+          prev.expensive !== next.expensive
+
+        if (!changed) {
+          return prev
+        }
+
+        return {
+          ...next,
+          lastUpdated: Date.now(),
+        }
+      })
+    })
   }, [])
 
   refreshRef.current = refresh
