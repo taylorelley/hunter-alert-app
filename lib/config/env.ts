@@ -1,4 +1,4 @@
-import { CONSTRAINED_ENV_LIMITS, REQUIRED_ENV_VARS } from '@/config/env-requirements'
+import { CONSTRAINED_ENV_LIMITS, REQUIRED_ENV_VARS } from '@/config/env-requirements.mjs'
 
 export type SettingSource = 'env' | 'default' | 'clamped'
 
