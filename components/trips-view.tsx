@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Trip, useApp } from "./app-provider"
 import { cn } from "@/lib/utils"
+import { parseDate } from "@/lib/date-utils"
 
 interface TripsViewProps {
   onStartTrip: () => void
@@ -38,16 +39,6 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
   useEffect(() => {
     void doRefresh()
   }, [doRefresh])
-
-  // Parse date-only strings as UTC to avoid timezone shift
-  const parseDate = (value: Date | string): Date => {
-    if (value instanceof Date) return value
-    // Detect YYYY-MM-DD format and parse as UTC
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return new Date(`${value}T00:00:00Z`)
-    }
-    return new Date(value)
-  }
 
   const historyTrips = useMemo(() => {
     return trips

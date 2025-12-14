@@ -34,6 +34,7 @@ import {
   type WeatherData,
   formatCondition,
 } from "@/lib/weather"
+import { parseTripDateMs } from "@/lib/date-utils"
 import type { TabId } from "./mobile-nav"
 
 interface HomeViewProps {
@@ -42,13 +43,6 @@ interface HomeViewProps {
   onAddWaypoint: () => void
   onStartTrip: () => void
   onSOS: () => void
-}
-
-// Parse trip dates handling timezone-fragile date-only strings
-const parseTripDateMs = (value: Date | string): number => {
-  if (value instanceof Date) return value.getTime()
-  // Treat YYYY-MM-DD as a local calendar day to avoid UTC shift
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`).getTime() : new Date(value).getTime()
 }
 
 export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, onSOS }: HomeViewProps) {

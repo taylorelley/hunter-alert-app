@@ -38,6 +38,7 @@ import { useNetwork } from "./network-provider"
 import { useSyncEngine } from "@/lib/sync/use-sync-engine"
 import { PendingAction, SyncStatus } from "@/lib/sync/types"
 import { getCurrentPosition } from "@/lib/geolocation"
+import { toISOString } from "@/lib/date-utils"
 import {
   PullUpdatesResult,
   Group as APIGroup,
@@ -1385,15 +1386,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ? trip.checkInCadence
         : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS)
 
-      // Convert Date | string to ISO string format, normalizing date-only strings
-      const toISOString = (date: Date | string): string => {
-        if (typeof date === "string") {
-          // Normalize YYYY-MM-DD to stable timestamp (local midnight)
-          return /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00`).toISOString() : date
-        }
-        return date.toISOString()
-      }
-
       const metadata = {
         destination: trip.destination,
         notes: trip.notes,
@@ -1430,15 +1422,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const normalizedCadence = state.isPremium
         ? trip.checkInCadence
         : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS)
-
-      // Convert Date | string to ISO string format, normalizing date-only strings
-      const toISOString = (date: Date | string): string => {
-        if (typeof date === "string") {
-          // Normalize YYYY-MM-DD to stable timestamp (local midnight)
-          return /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00`).toISOString() : date
-        }
-        return date.toISOString()
-      }
 
       const metadata = {
         destination: trip.destination,
