@@ -1132,9 +1132,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBillingError(null)
     try {
       const result = await getCustomerInfo(session.user.id)
-      if (result) {
-        await persistEntitlement(result.entitlementActive, result.receipt ?? null)
+      if (!result) {
+        setBillingError("Subscription status unavailable on this device.")
+        return
       }
+
+      await persistEntitlement(result.entitlementActive, result.receipt ?? null)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to refresh purchases"
       setBillingError(message)

@@ -269,7 +269,7 @@ export async function getCustomerInfo(userId?: string): Promise<BillingResult | 
   const purchases = await loadPurchases(userId)
   if (!purchases?.getCustomerInfo) {
     console.warn("Purchases client unavailable; cannot load customer info")
-    return { entitlementActive: false }
+    return null
   }
 
   try {
@@ -281,6 +281,6 @@ export async function getCustomerInfo(userId?: string): Promise<BillingResult | 
     }
   } catch (error) {
     console.error("Failed to fetch customer info", error)
-    return { entitlementActive: false }
+    return null
   }
 }
