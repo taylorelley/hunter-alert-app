@@ -20,6 +20,8 @@ const formatDateLocalYYYYMMDD = (date: Date) => {
   return `${year}-${month}-${day}`
 }
 
+const parseLocalDateInput = (value: string): Date => new Date(`${value}T00:00:00`)
+
 export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
   const { startTrip, updateTrip, emergencyContacts, refresh, isPremium } = useApp()
   const [step, setStep] = useState(1)
@@ -67,10 +69,8 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
     switch (step) {
       case 1: {
         if (!destination.trim() || !startDate || !endDate) return false
-        // Validate that end date is after start date
-        const start = new Date(startDate)
-        const end = new Date(endDate)
-        return end >= start
+        // Validate that end date is on/after start date
+        return parseLocalDateInput(endDate) >= parseLocalDateInput(startDate)
       }
       case 2:
         return checkInCadence > 0
@@ -89,8 +89,8 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
     try {
       const payload = {
         destination,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
+        startDate: parseLocalDateInput(startDate),
+        endDate: parseLocalDateInput(endDate),
         checkInCadence,
         emergencyContacts: selectedContacts,
         notes,
@@ -218,10 +218,11 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">Start Date</label>
+                        <label htmlFor="trip-start-date" className="text-sm font-medium">Start Date</label>
                         <input
+                          id="trip-start-date"
                           type="date"
                           value={startDate}
                           onChange={(e) => setStartDate(e.target.value)}
@@ -229,8 +230,9 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">End Date</label>
+                        <label htmlFor="trip-end-date" className="text-sm font-medium">End Date</label>
                         <input
+                          id="trip-end-date"
                           type="date"
                           value={endDate}
                           onChange={(e) => setEndDate(e.target.value)}
@@ -238,8 +240,8 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
                         />
                       </div>
                     </div>
-                    {startDate && endDate && new Date(endDate) < new Date(startDate) && (
-                      <p className="text-sm text-danger">End date must be after start date</p>
+                    {startDate && endDate && parseLocalDateInput(endDate) < parseLocalDateInput(startDate) && (
+                      <p className="text-sm text-danger">End date must be on or after start date</p>
                     )}
                   </div>
                 </div>
@@ -362,8 +364,8 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
                       <div className="p-3 rounded-lg bg-muted/50">
                         <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Dates</p>
                         <p className="font-medium text-sm">
-                          {new Date(startDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} -{" "}
-                          {new Date(endDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          {parseLocalDateInput(startDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} -{" "}
+                          {parseLocalDateInput(endDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         </p>
                       </div>
                       <div className="p-3 rounded-lg bg-muted/50">

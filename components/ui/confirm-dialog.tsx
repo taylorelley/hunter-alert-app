@@ -30,16 +30,19 @@ export function ConfirmDialog({
   isLoading = false,
 }: ConfirmDialogProps) {
   const [isProcessing, setIsProcessing] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
 
   if (!open) return null
 
   const handleConfirm = async () => {
+    setError(null)
     setIsProcessing(true)
     try {
       await onConfirm()
       onOpenChange(false)
     } catch (error) {
       console.error("Confirm action failed:", error)
+      setError(error instanceof Error ? error.message : "Action failed")
     } finally {
       setIsProcessing(false)
     }
@@ -71,6 +74,12 @@ export function ConfirmDialog({
 
           <CardContent className="p-6 space-y-6">
             <p className="text-sm text-muted-foreground">{description}</p>
+
+            {error && (
+              <div className="p-3 rounded-lg bg-danger/10 border border-danger/20">
+                <p className="text-sm text-danger" role="alert">{error}</p>
+              </div>
+            )}
 
             <div className="flex gap-3">
               <Button

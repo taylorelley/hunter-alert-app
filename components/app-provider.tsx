@@ -1485,6 +1485,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         // Update local state
         setConversations((prev) => prev.filter((conversation) => conversation.id !== tripId))
+        setMessages((prev) => prev.filter((message) => message.conversation_id !== tripId))
 
         // If deleting the current trip, clear it from state
         setState((prev) => ({

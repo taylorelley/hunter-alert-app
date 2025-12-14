@@ -288,20 +288,11 @@ export async function updateGroup(
     throw new Error('Group name cannot be empty');
   }
 
-  const updatePayload: Record<string, unknown> = {};
-  if (updates.name !== undefined) {
-    updatePayload.name = updates.name.trim();
-  }
-  if (updates.description !== undefined) {
-    updatePayload.description = updates.description || null;
-  }
-
-  const { data, error } = await client
-    .from('groups')
-    .update(updatePayload)
-    .eq('id', groupId)
-    .select()
-    .single();
+  const { data, error } = await client.rpc('update_group', {
+    group_id: groupId,
+    new_name: updates.name?.trim() || null,
+    new_description: updates.description?.trim() || null,
+  });
 
   if (error) {
     throw error;

@@ -53,7 +53,10 @@ export function GroupSettingsModal({ isOpen, onClose, group, onSubmit }: GroupSe
     }
   }
 
-  const hasChanges = name.trim() !== group.name || (description.trim() || undefined) !== (group.description || undefined)
+  // Normalize both sides to detect transitions between "" and undefined/null
+  const normalizedDescription = description.trim() === "" ? undefined : description.trim()
+  const normalizedGroupDescription = group.description == null ? undefined : group.description.trim()
+  const hasChanges = name.trim() !== group.name || normalizedDescription !== normalizedGroupDescription
 
   return (
     <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
