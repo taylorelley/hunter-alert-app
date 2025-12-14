@@ -86,7 +86,7 @@ function parseStatusPayload(payload: unknown, envVars: Record<string, string>): 
   const apiUrl =
     asString(getNested(payload, ['services', 'api', 'url'])) ||
     asString(getNested(payload, ['api', 'url'])) ||
-    envVars.SUPABASE_URL ||
+    normalizeKey(envVars.SUPABASE_URL) ||
     'http://127.0.0.1:54321';
 
   const anonKey =
@@ -107,7 +107,7 @@ function parseStatusPayload(payload: unknown, envVars: Record<string, string>): 
 
   const dbUrl =
     asString(getNested(payload, ['db', 'url'])) ||
-    envVars.SUPABASE_DB_URL ||
+    normalizeKey(envVars.SUPABASE_DB_URL) ||
     undefined;
 
   return { apiUrl, anonKey, serviceRoleKey, dbUrl };
@@ -116,7 +116,8 @@ function parseStatusPayload(payload: unknown, envVars: Record<string, string>): 
 function safeParseJson(value: string): unknown {
   try {
     return JSON.parse(value);
-  } catch {
+  } catch (err) {
+    console.warn('Failed to parse Supabase JSON status output; falling back to env parsing.', err);
     return {};
   }
 }
