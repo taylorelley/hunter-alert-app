@@ -27,7 +27,7 @@ function HunterAlertApp(): JSX.Element {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-background">
-      <StatusHeader />
+      <StatusHeader onOpenAccount={() => setActiveTab("profile")} isAccountActive={activeTab === "profile"} />
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {activeTab === "home" && (
