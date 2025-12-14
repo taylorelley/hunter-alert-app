@@ -246,9 +246,23 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Navigation className="w-4 h-4" />
                   <span>
-                    Day {Math.ceil((Date.now() - currentTrip.startDate.getTime()) / (1000 * 60 * 60 * 24))} of{" "}
+                    Day{" "}
                     {Math.ceil(
-                      (currentTrip.endDate.getTime() - currentTrip.startDate.getTime()) / (1000 * 60 * 60 * 24),
+                      (Date.now() -
+                        (typeof currentTrip.startDate === "string"
+                          ? new Date(currentTrip.startDate).getTime()
+                          : currentTrip.startDate.getTime())) /
+                        (1000 * 60 * 60 * 24),
+                    )}{" "}
+                    of{" "}
+                    {Math.ceil(
+                      ((typeof currentTrip.endDate === "string"
+                        ? new Date(currentTrip.endDate).getTime()
+                        : currentTrip.endDate.getTime()) -
+                        (typeof currentTrip.startDate === "string"
+                          ? new Date(currentTrip.startDate).getTime()
+                          : currentTrip.startDate.getTime())) /
+                        (1000 * 60 * 60 * 24),
                     )}
                   </span>
                 </div>

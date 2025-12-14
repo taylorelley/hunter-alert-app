@@ -95,8 +95,8 @@ export interface EmergencyContact {
 export interface Trip {
   id: string
   destination: string
-  startDate: Date
-  endDate: Date
+  startDate: Date | string
+  endDate: Date | string
   checkInCadence: number
   emergencyContacts: string[]
   notes: string
@@ -1289,7 +1289,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? trip.checkInCadence
           : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS),
       }))
-      .sort((a, b) => b.startDate.getTime() - a.startDate.getTime())
+      .sort((a, b) => {
+        const aTime = typeof a.startDate === "string" ? new Date(a.startDate).getTime() : a.startDate.getTime()
+        const bTime = typeof b.startDate === "string" ? new Date(b.startDate).getTime() : b.startDate.getTime()
+        return bTime - aTime
+      })
 
     const activeTrip = mappedTrips.find((trip) => trip.status === "active") || null
 
@@ -1375,13 +1379,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const normalizedCadence = state.isPremium
         ? trip.checkInCadence
         : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS)
+
+      // Convert Date | string to ISO string format
+      const toISOString = (date: Date | string): string =>
+        typeof date === "string" ? date : date.toISOString()
+
       const metadata = {
         destination: trip.destination,
         notes: trip.notes,
         checkInCadence: normalizedCadence,
         emergencyContacts: trip.emergencyContacts,
-        startDate: trip.startDate.toISOString(),
-        endDate: trip.endDate.toISOString(),
+        startDate: toISOString(trip.startDate),
+        endDate: toISOString(trip.endDate),
         status: "active",
       }
 
@@ -1411,13 +1420,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const normalizedCadence = state.isPremium
         ? trip.checkInCadence
         : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS)
+
+      // Convert Date | string to ISO string format
+      const toISOString = (date: Date | string): string =>
+        typeof date === "string" ? date : date.toISOString()
+
       const metadata = {
         destination: trip.destination,
         notes: trip.notes,
         checkInCadence: normalizedCadence,
         emergencyContacts: trip.emergencyContacts,
-        startDate: trip.startDate.toISOString(),
-        endDate: trip.endDate.toISOString(),
+        startDate: toISOString(trip.startDate),
+        endDate: toISOString(trip.endDate),
         status: trip.status,
       }
 
@@ -1443,13 +1457,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const endTrip = useCallback(async () => {
     if (!session || !state.currentTrip) return
+    // Convert Date | string to ISO string format
+    const toISOString = (date: Date | string): string =>
+      typeof date === "string" ? date : date.toISOString()
+
     const metadata = {
       destination: state.currentTrip.destination,
       notes: state.currentTrip.notes,
       checkInCadence: state.currentTrip.checkInCadence,
       emergencyContacts: state.currentTrip.emergencyContacts,
-      startDate: state.currentTrip.startDate.toISOString(),
-      endDate: state.currentTrip.endDate.toISOString(),
+      startDate: toISOString(state.currentTrip.startDate),
+      endDate: toISOString(state.currentTrip.endDate),
       status: "completed",
     }
     const { data: updatedConversation } = await supabase

@@ -42,11 +42,16 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
   const historyTrips = useMemo(() => {
     return trips
       .filter((trip) => trip.id !== currentTrip?.id)
-      .sort((a, b) => b.startDate.getTime() - a.startDate.getTime())
+      .sort((a, b) => {
+        const aTime = typeof a.startDate === "string" ? new Date(a.startDate).getTime() : a.startDate.getTime()
+        const bTime = typeof b.startDate === "string" ? new Date(b.startDate).getTime() : b.startDate.getTime()
+        return bTime - aTime
+      })
   }, [currentTrip?.id, trips])
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  const formatDate = (date: Date | string) => {
+    const dateObj = typeof date === "string" ? new Date(date) : date
+    return dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" })
   }
 
   const formatDateRange = (trip: Trip) => `${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}`
