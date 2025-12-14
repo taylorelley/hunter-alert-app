@@ -175,6 +175,17 @@ export async function createUserClient(
     throw new Error(`Unable to create user: ${userResult.error?.message ?? 'unknown error'}`);
   }
 
+  const profile = {
+    id: userResult.data.user.id,
+    email,
+    display_name: email,
+  };
+
+  const { error: profileError } = await adminClient.from('profiles').upsert(profile);
+  if (profileError) {
+    throw profileError;
+  }
+
   const authClient = createClient(stack.apiUrl, stack.anonKey, {
     auth: {
       autoRefreshToken: false,
