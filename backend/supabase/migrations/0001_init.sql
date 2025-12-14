@@ -172,6 +172,9 @@ create policy conversations_update on conversations
 for update using (auth.uid() = any(participant_ids))
 with check (auth.uid() = any(participant_ids));
 
+create policy conversations_delete on conversations
+for delete using (auth.uid() = any(participant_ids));
+
 -- Messages policies
 create policy messages_select on messages
 for select using (
@@ -502,14 +505,27 @@ begin
     raise exception 'Only the group owner can update group settings';
   end if;
 
+  -- Validate inputs before update
+  if new_name is not null and trim(new_name) = '' then
+    raise exception 'Group name cannot be empty or whitespace-only';
+  end if;
+
   -- Update the group with provided fields
   update groups
   set
-    name = coalesce(new_name, name),
-    description = coalesce(new_description, description),
-    updated_at = now()
+    name = coalesce(trim(new_name), name),
+    description = case
+      when new_description is not null and trim(new_description) = '' then null
+      when new_description is not null then trim(new_description)
+      else description
+    end
   where id = group_id
   returning * into updated_group;
+
+  -- Check if the update affected any rows (group may have been deleted concurrently)
+  if updated_group is null then
+    raise exception 'Group not found or was deleted';
+  end if;
 
   return updated_group;
 end;

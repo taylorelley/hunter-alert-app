@@ -89,8 +89,8 @@ export function PlanTripModal({ isOpen, onClose, trip }: PlanTripModalProps) {
     try {
       const payload = {
         destination,
-        startDate: parseLocalDateInput(startDate),
-        endDate: parseLocalDateInput(endDate),
+        startDate,
+        endDate,
         checkInCadence,
         emergencyContacts: selectedContacts,
         notes,

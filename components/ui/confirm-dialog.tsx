@@ -32,6 +32,13 @@ export function ConfirmDialog({
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
+  // Clear error when dialog closes
+  React.useEffect(() => {
+    if (!open) {
+      setError(null)
+    }
+  }, [open])
+
   if (!open) return null
 
   const handleConfirm = async () => {

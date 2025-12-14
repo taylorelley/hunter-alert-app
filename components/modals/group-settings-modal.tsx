@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, type FormEvent } from "react"
 import { X, Loader2, Settings } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { type Group } from "../app-provider"
+import { type Group } from "@/components/app-provider"
 
 interface GroupSettingsModalProps {
   isOpen: boolean
@@ -30,7 +30,7 @@ export function GroupSettingsModal({ isOpen, onClose, group, onSubmit }: GroupSe
 
   if (!isOpen || !group) return null
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     const trimmedName = name.trim()
 
