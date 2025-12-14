@@ -92,6 +92,34 @@ begin
   end if;
 
   return query
+  with prepared as (
+    select
+      (entry.value->>'conversation_id')::uuid as conversation_id,
+      trim(entry.value->>'body') as body,
+      coalesce(entry.value->'metadata', '{}'::jsonb) as metadata,
+      entry.value->>'client_id' as client_id,
+      coalesce((entry.value->>'created_at')::timestamptz, now()) as created_at
+    from jsonb_array_elements(messages) as entry(value)
+    where (entry.value ? 'conversation_id')
+      and (entry.value ? 'body')
+      and length(trim(coalesce(entry.value->>'body', ''))) > 0
+  ), joined as (
+    select
+      p.conversation_id,
+      p.body,
+      p.metadata,
+      p.client_id,
+      p.created_at,
+      c.metadata as conversation_metadata,
+      coalesce((c.metadata->>'checkInCadence')::int, 4) as trip_cadence,
+      coalesce(c.metadata->>'status', 'active') as trip_status,
+      coalesce(p.metadata->>'status', '') as checkin_status,
+      prof.is_premium
+    from prepared p
+    join conversations c on c.id = p.conversation_id
+    join profiles prof on prof.id = auth.uid()
+    where auth.uid() = any(c.participant_ids)
+  )
   insert into messages (conversation_id, sender_id, body, metadata, client_id, created_at)
   select
     j.conversation_id,
