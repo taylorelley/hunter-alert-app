@@ -51,6 +51,25 @@ function readLocalEnv() {
     }, {});
 }
 
+function parseEnvOutput(output: string): Record<string, string> {
+  return output
+    .split(/\r?\n/)
+    .filter((line) => line && !line.trim().startsWith('#'))
+    .reduce<Record<string, string>>((acc, line) => {
+      const [key, ...rest] = line.split('=');
+      if (key) {
+        acc[key.trim()] = rest.join('=');
+      }
+      return acc;
+    }, {});
+}
+
+const normalizeKey = (value: string | undefined): string => {
+  if (!value) return '';
+  const trimmed = value.trim();
+  return trimmed.replace(/^['"]|['"]$/g, '');
+};
+
 function parseStatusPayload(payload: unknown, envVars: Record<string, string>): SupabaseStack {
   const getNested = (value: unknown, path: string[]): unknown => {
     let current: unknown = value;
@@ -67,29 +86,40 @@ function parseStatusPayload(payload: unknown, envVars: Record<string, string>): 
   const apiUrl =
     asString(getNested(payload, ['services', 'api', 'url'])) ||
     asString(getNested(payload, ['api', 'url'])) ||
-    envVars.SUPABASE_URL ||
+    normalizeKey(envVars.SUPABASE_URL) ||
     'http://127.0.0.1:54321';
 
   const anonKey =
-    asString(getNested(payload, ['services', 'api', 'anonKey'])) ||
-    asString(getNested(payload, ['api', 'anonKey'])) ||
-    envVars.SUPABASE_ANON_KEY ||
-    envVars.ANON_KEY ||
-    '';
+    normalizeKey(
+      asString(getNested(payload, ['services', 'api', 'anonKey'])) ||
+        asString(getNested(payload, ['api', 'anonKey'])) ||
+        envVars.SUPABASE_ANON_KEY ||
+        envVars.ANON_KEY,
+    );
 
   const serviceRoleKey =
-    asString(getNested(payload, ['services', 'api', 'serviceRoleKey'])) ||
-    asString(getNested(payload, ['api', 'serviceRoleKey'])) ||
-    envVars.SUPABASE_SERVICE_ROLE_KEY ||
-    envVars.SERVICE_ROLE_KEY ||
-    '';
+    normalizeKey(
+      asString(getNested(payload, ['services', 'api', 'serviceRoleKey'])) ||
+        asString(getNested(payload, ['api', 'serviceRoleKey'])) ||
+        envVars.SUPABASE_SERVICE_ROLE_KEY ||
+        envVars.SERVICE_ROLE_KEY,
+    );
 
   const dbUrl =
     asString(getNested(payload, ['db', 'url'])) ||
-    envVars.SUPABASE_DB_URL ||
+    normalizeKey(envVars.SUPABASE_DB_URL) ||
     undefined;
 
   return { apiUrl, anonKey, serviceRoleKey, dbUrl };
+}
+
+function safeParseJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch (err) {
+    console.warn('Failed to parse Supabase JSON status output; falling back to env parsing.', err);
+    return {};
+  }
 }
 
 export async function startSupabaseStack(): Promise<SupabaseStack> {
@@ -97,15 +127,24 @@ export async function startSupabaseStack(): Promise<SupabaseStack> {
   await runSupabase(['stop']).catch(() => undefined);
 
   // Launch a minimal stack to keep resource usage low in CI.
-  await runSupabase(['start', '-x', 'studio', '-x', 'inbucket', '-x', 'imgproxy', '-x', 'edge-runtime']);
+  await runSupabase(['start', '-x', 'studio', '-x', 'imgproxy', '-x', 'edge-runtime', '-x', 'inbucket']);
 
   // Reset ensures migrations are applied from scratch for deterministic tests.
-  await runSupabase(['db', 'reset', '--force']);
+  await runSupabase(['db', 'reset', '--yes']);
 
   const envVars = readLocalEnv();
-  const statusOutput = await runSupabase(['status', '--output=json'], true);
-  const parsed = statusOutput ? JSON.parse(statusOutput) : {};
-  const stack = parseStatusPayload(parsed, envVars);
+  const statusOutput = await runSupabase(['status', '--output=json'], true).catch((err) => {
+    console.warn('Failed to retrieve JSON status:', err?.message ?? err);
+    return '';
+  });
+  const statusEnvOutput = await runSupabase(['status', '--output=env'], true).catch((err) => {
+    console.warn('Failed to retrieve env status:', err?.message ?? err);
+    return '';
+  });
+
+  const parsed = statusOutput ? safeParseJson(statusOutput) : {};
+  const mergedEnv = { ...envVars, ...parseEnvOutput(statusEnvOutput) };
+  const stack = parseStatusPayload(parsed, mergedEnv);
 
   if (!stack.anonKey || !stack.serviceRoleKey) {
     throw new Error('Supabase keys missing; ensure CLI is logged in and start completed');
@@ -141,6 +180,20 @@ export async function createUserClient(
 
   if (!userResult.data.user) {
     throw new Error(`Unable to create user: ${userResult.error?.message ?? 'unknown error'}`);
+  }
+
+  const profile = {
+    id: userResult.data.user.id,
+    email,
+    display_name: email,
+  };
+
+  const { error: profileError } = await adminClient.from('profiles').upsert(profile);
+  if (profileError) {
+    throw new Error(
+      `Failed to upsert profile for ${email} (${userResult.data.user.id}): ${profileError.message}`,
+      { cause: profileError },
+    );
   }
 
   const authClient = createClient(stack.apiUrl, stack.anonKey, {
