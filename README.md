@@ -11,6 +11,31 @@ Hunter Alert is a mobile-first application built with React, Next.js, and Capaci
 5. Run backend checks: `npm run lint --prefix backend` to validate the migration and env sample are present.
 6. RPCs are defined in SQL and exposed by Supabase as `send_message_batch` and `pull_updates` with built-in batch size limits.
 
+### Supabase configuration
+
+Set up Supabase credentials for both the web client and local CLI workflows:
+
+- **Frontend (.env.local)** — copy `.env.example` to `.env.local` and populate:
+  - `NEXT_PUBLIC_SUPABASE_URL`: Your project URL from Supabase dashboard → **Settings > API > Project URL**.
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: The anon public API key from **Settings > API > Project API keys**.
+  - Optional tuning values (defaults shown in `.env.example`): `BACKEND_MAX_MESSAGE_BATCH`, `BACKEND_MAX_PULL_LIMIT`, `SYNC_BASE_BACKOFF_MS`, `SYNC_NORMAL_BATCH_LIMIT`, `SYNC_SATELLITE_BATCH_LIMIT`, `SYNC_ULTRA_BATCH_LIMIT`, `NEXT_PUBLIC_ENABLE_ADMIN_DEBUG`.
+
+- **Backend CLI (backend/.env)** — copy `backend/.env.example` to `backend/.env` for local `supabase` commands:
+  - `SUPABASE_URL`: Same project URL as above.
+  - `SUPABASE_ANON_KEY`: Public anon key (matches frontend).
+  - `SUPABASE_SERVICE_ROLE_KEY`: Service role key from **Settings > API > Project API keys** (keep secret; never commit).
+  - `SUPABASE_JWT_SECRET`: JWT secret from **Settings > API > JWT Settings** (used by Supabase CLI when generating tokens).
+
+- **Edge Functions & production messaging** — set the following in Supabase **Project Settings > Configuration > Variables** (or per-function secrets) so SMS/email delivery works in production:
+  - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`: Required for real SMS dispatch in `dispatch-alerts` and `send-test-notification`. Missing values will fall back to simulated sends in dev only.
+  - `POSTMARK_SERVER_TOKEN`, `POSTMARK_FROM`: Required for email test notifications in `send-test-notification`; otherwise the function simulates delivery.
+  - `NODE_ENV`: Leave as `production` in Supabase; use `development` only for local testing where simulated providers are acceptable.
+
+**Tips**
+- Keep `.env.local` and `backend/.env` out of version control (already gitignored).
+- If you rotate keys in Supabase, update both files to keep CLI migrations and local dev in sync.
+- `scripts/validate-env.mjs` will enforce required frontend variables at startup and clamp constrained-network defaults to safe ranges.
+
 ## Frontend development
 - `pnpm dev` (or `npm run dev`) to start the Next.js development server.
 - `pnpm build` (or `npm run build`) to create a production build.
