@@ -322,7 +322,18 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 NEXT_PUBLIC_WEATHER_API_KEY=your-openweathermap-key
 BACKEND_MAX_MESSAGE_BATCH=20
 BACKEND_MAX_PULL_LIMIT=100
+
+# Test user credentials (provided as runner secrets during CI/local env)
+TEST_USER=email@example.com
+TEST_PASSWORD=super-secure-password
 ```
+
+## Test User for Authenticated Sessions
+
+- Use the provided `TEST_USER` and `TEST_PASSWORD` secrets (available in the environment) when you need to create authenticated sessions for validation, automated checks, or taking screenshots of gated flows.
+- Prefer loading them via `process.env.TEST_USER` and `process.env.TEST_PASSWORD` instead of hardcoding.
+- Keep these credentials out of logs and screenshots; if screenshots are required, ensure no sensitive fields are visible.
+- If the test account needs cleanup (e.g., reset state), prefer automated teardown scripts rather than manual deletion to keep runs consistent.
 
 ## Debugging Network Issues
 
