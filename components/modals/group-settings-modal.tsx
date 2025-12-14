@@ -20,13 +20,14 @@ export function GroupSettingsModal({ isOpen, onClose, group, onSubmit }: GroupSe
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Initialize form when group changes
+  // Initialize form when group changes or modal opens
   useEffect(() => {
     if (group) {
       setName(group.name)
       setDescription(group.description || "")
+      setError(null)
     }
-  }, [group])
+  }, [group, isOpen])
 
   if (!isOpen || !group) return null
 

@@ -32,12 +32,27 @@ export function ConfirmDialog({
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
-  // Clear error when dialog closes
+  // Clear error and reset processing state when dialog closes
   React.useEffect(() => {
     if (!open) {
       setError(null)
+      setIsProcessing(false)
     }
   }, [open])
+
+  // Handle Escape key to close dialog
+  React.useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isProcessing && !isLoading) {
+        onOpenChange(false)
+      }
+    }
+
+    if (open) {
+      document.addEventListener("keydown", handleEscape)
+      return () => document.removeEventListener("keydown", handleEscape)
+    }
+  }, [open, isProcessing, isLoading, onOpenChange])
 
   if (!open) return null
 
@@ -47,9 +62,9 @@ export function ConfirmDialog({
     try {
       await onConfirm()
       onOpenChange(false)
-    } catch (error) {
-      console.error("Confirm action failed:", error)
-      setError(error instanceof Error ? error.message : "Action failed")
+    } catch (err: unknown) {
+      console.error("Confirm action failed:", err)
+      setError(err instanceof Error ? err.message : "Action failed")
     } finally {
       setIsProcessing(false)
     }
@@ -63,16 +78,23 @@ export function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
-      <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-md mx-auto">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dialog-title"
+        aria-describedby="dialog-description"
+        className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-md mx-auto"
+      >
         <Card className="shadow-2xl border-border">
           <div className="flex items-center justify-between p-4 border-b border-border">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
+            <h2 id="dialog-title" className="text-lg font-semibold flex items-center gap-2">
               {variant === "danger" && <AlertTriangle className="w-5 h-5 text-danger" />}
               {title}
             </h2>
             <button
               onClick={handleCancel}
               disabled={isProcessing || isLoading}
+              aria-label="Close dialog"
               className="p-2 hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
             >
               <X className="w-5 h-5" />
@@ -80,7 +102,7 @@ export function ConfirmDialog({
           </div>
 
           <CardContent className="p-6 space-y-6">
-            <p className="text-sm text-muted-foreground">{description}</p>
+            <p id="dialog-description" className="text-sm text-muted-foreground">{description}</p>
 
             {error && (
               <div className="p-3 rounded-lg bg-danger/10 border border-danger/20">
