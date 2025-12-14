@@ -7,7 +7,9 @@ import { getCustomerInfo, getOfferings, purchasePackage, restorePurchases, type 
 import {
   authenticate,
   createGroup as apiCreateGroup,
+  updateGroup as apiUpdateGroup,
   addWaypoint as apiAddWaypoint,
+  deleteWaypoint as apiDeleteWaypoint,
   createGeofence as apiCreateGeofence,
   deleteGeofence as apiDeleteGeofence,
   inviteToGroup as apiInviteToGroup,
@@ -36,6 +38,7 @@ import { useNetwork } from "./network-provider"
 import { useSyncEngine } from "@/lib/sync/use-sync-engine"
 import { PendingAction, SyncStatus } from "@/lib/sync/types"
 import { getCurrentPosition } from "@/lib/geolocation"
+import { toISOString, parseTripDateMs } from "@/lib/date-utils"
 import {
   PullUpdatesResult,
   Group as APIGroup,
@@ -93,8 +96,8 @@ export interface EmergencyContact {
 export interface Trip {
   id: string
   destination: string
-  startDate: Date
-  endDate: Date
+  startDate: Date | string
+  endDate: Date | string
   checkInCadence: number
   emergencyContacts: string[]
   notes: string
@@ -293,9 +296,12 @@ interface AppContextValue extends AppState {
   startTrip: (trip: Omit<Trip, "id" | "checkIns" | "status">) => Promise<void>
   updateTrip: (tripId: string, trip: Omit<Trip, "id" | "checkIns">) => Promise<void>
   endTrip: () => Promise<void>
+  deleteTrip: (tripId: string) => Promise<void>
   checkIn: (status: "ok" | "need-help", notes: string) => Promise<void>
   addWaypoint: (waypoint: Omit<Waypoint, "id" | "createdAt">) => Promise<void>
+  deleteWaypoint: (waypointId: string) => Promise<void>
   createGroup: (name: string, description?: string) => Promise<void>
+  updateGroup: (groupId: string, updates: { name?: string; description?: string }) => Promise<void>
   createGeofence: (params: {
     name: string
     latitude: number
@@ -1284,7 +1290,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? trip.checkInCadence
           : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS),
       }))
-      .sort((a, b) => b.startDate.getTime() - a.startDate.getTime())
+      .sort((a, b) => {
+        const aTime = parseTripDateMs(a.startDate)
+        const bTime = parseTripDateMs(b.startDate)
+        return bTime - aTime
+      })
 
     const activeTrip = mappedTrips.find((trip) => trip.status === "active") || null
 
@@ -1370,13 +1380,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const normalizedCadence = state.isPremium
         ? trip.checkInCadence
         : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS)
+
       const metadata = {
         destination: trip.destination,
         notes: trip.notes,
         checkInCadence: normalizedCadence,
         emergencyContacts: trip.emergencyContacts,
-        startDate: trip.startDate.toISOString(),
-        endDate: trip.endDate.toISOString(),
+        startDate: toISOString(trip.startDate),
+        endDate: toISOString(trip.endDate),
         status: "active",
       }
 
@@ -1406,13 +1417,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const normalizedCadence = state.isPremium
         ? trip.checkInCadence
         : Math.max(trip.checkInCadence, FREE_MIN_CHECKIN_CADENCE_HOURS)
+
       const metadata = {
         destination: trip.destination,
         notes: trip.notes,
         checkInCadence: normalizedCadence,
         emergencyContacts: trip.emergencyContacts,
-        startDate: trip.startDate.toISOString(),
-        endDate: trip.endDate.toISOString(),
+        startDate: toISOString(trip.startDate),
+        endDate: toISOString(trip.endDate),
         status: trip.status,
       }
 
@@ -1438,13 +1450,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const endTrip = useCallback(async () => {
     if (!session || !state.currentTrip) return
+
     const metadata = {
       destination: state.currentTrip.destination,
       notes: state.currentTrip.notes,
       checkInCadence: state.currentTrip.checkInCadence,
       emergencyContacts: state.currentTrip.emergencyContacts,
-      startDate: state.currentTrip.startDate.toISOString(),
-      endDate: state.currentTrip.endDate.toISOString(),
+      startDate: toISOString(state.currentTrip.startDate),
+      endDate: toISOString(state.currentTrip.endDate),
       status: "completed",
     }
     const { data: updatedConversation } = await supabase
@@ -1468,6 +1481,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     await flush()
   }, [flush, session, state.currentTrip, supabase])
+
+  const deleteTrip = useCallback(
+    async (tripId: string) => {
+      if (!session) throw new Error("Sign-in required to delete trip")
+
+      try {
+        const { error } = await supabase.from("conversations").delete().eq("id", tripId)
+
+        if (error) throw error
+
+        // Update local state
+        setConversations((prev) => prev.filter((conversation) => conversation.id !== tripId))
+        setMessages((prev) => prev.filter((message) => message.conversation_id !== tripId))
+
+        // If deleting the current trip, clear it from state
+        setState((prev) => ({
+          ...prev,
+          currentTrip: prev.currentTrip?.id === tripId ? null : prev.currentTrip,
+          trips: prev.trips.filter((trip) => trip.id !== tripId),
+        }))
+
+        await flush()
+      } catch (error) {
+        console.error("Error deleting trip:", error)
+        throw error
+      }
+    },
+    [flush, session, supabase],
+  )
 
   const checkIn = useCallback(
     async (statusValue: "ok" | "need-help", notes: string) => {
@@ -1559,6 +1601,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [flush, session, state.currentTrip?.id, state.privacySettings.shareWaypoints, supabase],
   )
 
+  const deleteWaypoint = useCallback(
+    async (waypointId: string) => {
+      if (!session) throw new Error("Sign-in required to delete waypoint")
+
+      try {
+        await apiDeleteWaypoint(supabase, waypointId)
+
+        // Optimistically update local state
+        setBackendWaypoints((prev) => prev.filter((waypoint) => waypoint.id !== waypointId))
+        await flush() // Trigger sync to get latest data
+      } catch (error) {
+        console.error("Error deleting waypoint:", error)
+        throw error
+      }
+    },
+    [flush, session, supabase],
+  )
+
   const createGroup = useCallback(
     async (name: string, description?: string) => {
       if (!session) throw new Error("Sign-in required to create group")
@@ -1569,6 +1629,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await flush() // Trigger sync to get latest data
       } catch (error) {
         console.error("Error creating group:", error)
+        throw error
+      }
+    },
+    [flush, session, supabase],
+  )
+
+  const updateGroup = useCallback(
+    async (groupId: string, updates: { name?: string; description?: string }) => {
+      if (!session) throw new Error("Sign-in required to update group")
+
+      try {
+        const result = await apiUpdateGroup(supabase, groupId, updates)
+        setBackendGroups((prev) => mergeRecords(prev, [result]))
+        await flush() // Trigger sync to get latest data
+      } catch (error) {
+        console.error("Error updating group:", error)
         throw error
       }
     },
@@ -2074,10 +2150,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       restorePremium,
       startTrip,
       endTrip,
+      deleteTrip,
       updateTrip,
       checkIn,
       addWaypoint,
+      deleteWaypoint,
       createGroup,
+      updateGroup,
       createGeofence,
       updateGeofence,
       deleteGeofence,
@@ -2104,8 +2183,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       checkIn,
       createGeofence,
       createGroup,
+      updateGroup,
       deleteGeofence,
       deleteEmergencyContact,
+      deleteTrip,
+      deleteWaypoint,
       deviceSessionId,
       endTrip,
       inviteToGroup,

@@ -34,6 +34,7 @@ import {
   type WeatherData,
   formatCondition,
 } from "@/lib/weather"
+import { parseTripDateMs } from "@/lib/date-utils"
 import type { TabId } from "./mobile-nav"
 
 interface HomeViewProps {
@@ -41,9 +42,10 @@ interface HomeViewProps {
   onCheckIn: () => void
   onAddWaypoint: () => void
   onStartTrip: () => void
+  onSOS: () => void
 }
 
-export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: HomeViewProps) {
+export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, onSOS }: HomeViewProps) {
   const { currentTrip, nextCheckInDue, checkInStatus, isPremium, waypoints } = useApp()
   const { state: networkState } = useNetwork()
   const { connectivity, constrained } = networkState
@@ -245,9 +247,18 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Navigation className="w-4 h-4" />
                   <span>
-                    Day {Math.ceil((Date.now() - currentTrip.startDate.getTime()) / (1000 * 60 * 60 * 24))} of{" "}
-                    {Math.ceil(
-                      (currentTrip.endDate.getTime() - currentTrip.startDate.getTime()) / (1000 * 60 * 60 * 24),
+                    Day{" "}
+                    {Math.max(
+                      1,
+                      Math.ceil((Date.now() - parseTripDateMs(currentTrip.startDate)) / (1000 * 60 * 60 * 24)),
+                    )}{" "}
+                    of{" "}
+                    {Math.max(
+                      1,
+                      Math.ceil(
+                        (parseTripDateMs(currentTrip.endDate) - parseTripDateMs(currentTrip.startDate)) /
+                          (1000 * 60 * 60 * 24),
+                      ),
                     )}
                   </span>
                 </div>
@@ -287,7 +298,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip }: 
             <Button
               variant="outline"
               className="h-20 flex-col gap-2 bg-card hover:bg-muted border-danger/30"
-              onClick={() => {}}
+              onClick={onSOS}
             >
               <AlertTriangle className="w-6 h-6 text-danger" />
               <span className="text-danger">SOS</span>

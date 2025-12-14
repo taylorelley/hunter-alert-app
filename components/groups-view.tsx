@@ -20,10 +20,12 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useApp, type Geofence, type Group } from "./app-provider"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { CreateGroupModal } from "./modals/create-group-modal"
+import { GroupSettingsModal } from "./modals/group-settings-modal"
 import { InviteMemberModal } from "./modals/invite-member-modal"
 import { GeofenceFormModal } from "./modals/geofence-form-modal"
 
@@ -35,6 +37,7 @@ export function GroupsView() {
     groupActivity,
     user,
     createGroup,
+    updateGroup,
     inviteToGroup,
     respondToInvitation,
     joinGroup,
@@ -49,6 +52,7 @@ export function GroupsView() {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [settingsModalGroup, setSettingsModalGroup] = useState<Group | null>(null)
   const [inviteModalGroup, setInviteModalGroup] = useState<Group | null>(null)
   const [geofenceModalState, setGeofenceModalState] = useState<{
     mode: "create" | "edit"
@@ -58,6 +62,7 @@ export function GroupsView() {
   const [incomingInvitationActionId, setIncomingInvitationActionId] = useState<string | null>(null)
   const [outgoingInvitationActionId, setOutgoingInvitationActionId] = useState<string | null>(null)
   const [geofenceActionId, setGeofenceActionId] = useState<string | null>(null)
+  const [deleteGeofenceConfirm, setDeleteGeofenceConfirm] = useState<Geofence | null>(null)
 
   const filteredGeofences = useMemo(() => {
     return selectedGroup ? geofences.filter((item) => item.groupId === selectedGroup) : geofences
@@ -79,6 +84,18 @@ export function GroupsView() {
       await createGroup(payload.name, payload.description)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not create the group. Please try again."
+      toast.error(message)
+      throw error
+    }
+  }
+
+  const handleUpdateGroupSubmit = async (groupId: string, updates: { name?: string; description?: string }) => {
+    try {
+      await updateGroup(groupId, updates)
+      setSettingsModalGroup(null)
+      toast.success("Group updated successfully")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not update the group. Please try again."
       toast.error(message)
       throw error
     }
@@ -184,13 +201,16 @@ export function GroupsView() {
     }
   }
 
-  const handleDeleteGeofence = async (geofenceId: string) => {
-    setGeofenceActionId(geofenceId)
+  const confirmDeleteGeofence = async () => {
+    if (!deleteGeofenceConfirm) return
+    setGeofenceActionId(deleteGeofenceConfirm.id)
     try {
-      await deleteGeofence(geofenceId)
+      await deleteGeofence(deleteGeofenceConfirm.id)
+      setDeleteGeofenceConfirm(null)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not remove the geofence. Please try again."
       toast.error(message)
+      throw error
     } finally {
       setGeofenceActionId(null)
     }
@@ -204,6 +224,12 @@ export function GroupsView() {
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onSubmit={handleCreateGroupSubmit}
+      />
+      <GroupSettingsModal
+        isOpen={!!settingsModalGroup}
+        onClose={() => setSettingsModalGroup(null)}
+        group={settingsModalGroup}
+        onSubmit={handleUpdateGroupSubmit}
       />
       <InviteMemberModal
         isOpen={Boolean(inviteModalGroup)}
@@ -248,7 +274,24 @@ export function GroupsView() {
 
           {/* My Groups */}
           <div className="space-y-3">
-          {groups.map((group) => {
+          {groups.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-12 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
+                  <Users className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">No Groups Yet</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Create a group to collaborate with other hunters and share locations
+                </p>
+                <Button onClick={() => setCreateModalOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Your First Group
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            groups.map((group) => {
             const isMember = group.members.some((member) => member.id === user?.id)
             const isOwner = group.role === "owner"
 
@@ -457,9 +500,12 @@ export function GroupsView() {
                           variant="outline"
                           size="icon"
                           className="h-9 w-9 bg-transparent"
-                          disabled
-                          title="Group settings coming soon"
-                          onClick={(event) => event.stopPropagation()}
+                          disabled={!isOwner}
+                          title={isOwner ? "Group settings" : "Only the owner can edit group settings"}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setSettingsModalGroup(group)
+                          }}
                         >
                           <Settings className="w-4 h-4" />
                         </Button>
@@ -469,15 +515,23 @@ export function GroupsView() {
                 </CardContent>
               </Card>
             )
-          })}
+          }))}
         </div>
 
         {/* Group Activity Feed */}
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Recent Activity</h2>
           <Card>
-            <CardContent className="p-0 divide-y divide-border">
-              {filteredActivity.map((activity) => (
+            <CardContent className={cn(filteredActivity.length === 0 ? "p-8 text-center" : "p-0 divide-y divide-border")}>
+              {filteredActivity.length === 0 ? (
+                <div>
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
+                    <Bell className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">No recent activity</p>
+                </div>
+              ) : (
+                filteredActivity.map((activity) => (
                 <div key={activity.id} className="flex items-center gap-3 p-4">
                   <div
                     className={cn(
@@ -504,7 +558,7 @@ export function GroupsView() {
                     {activity.createdAt.toLocaleTimeString()}
                   </span>
                 </div>
-              ))}
+              )))}
             </CardContent>
           </Card>
         </div>
@@ -582,13 +636,7 @@ export function GroupsView() {
                         className="h-8 w-8"
                         onClick={() => {
                           if (isProcessing) return
-                          if (
-                            !window.confirm(
-                              `Delete geofence "${geofence.name}"? This action cannot be undone.`,
-                            )
-                          )
-                            return
-                          void handleDeleteGeofence(geofence.id)
+                          setDeleteGeofenceConfirm(geofence)
                         }}
                         disabled={isProcessing}
                         title="Remove geofence"
@@ -650,6 +698,18 @@ export function GroupsView() {
       )}
       </div>
     </div>
+
+    {/* Delete Geofence Confirmation */}
+    <ConfirmDialog
+      open={!!deleteGeofenceConfirm}
+      onOpenChange={(open) => !open && setDeleteGeofenceConfirm(null)}
+      title="Delete Geofence"
+      description={`Delete geofence "${deleteGeofenceConfirm?.name}"? This action cannot be undone.`}
+      confirmText="Delete"
+      cancelText="Cancel"
+      variant="danger"
+      onConfirm={confirmDeleteGeofence}
+    />
     </>
   )
 }

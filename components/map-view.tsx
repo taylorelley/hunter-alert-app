@@ -16,13 +16,17 @@ import {
   Eye,
   Users,
   ChevronUp,
+  Share2,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useApp, type Waypoint } from "./app-provider"
 import { cn } from "@/lib/utils"
 import { calculateDistance, clearWatch, watchPosition, type Coordinates } from "@/lib/geolocation"
 import { useNetwork } from "./network-provider"
+import { toast } from "sonner"
 
 const WAYPOINT_ICONS: Record<Waypoint["type"], typeof MapPin> = {
   camp: Tent,
@@ -118,13 +122,14 @@ interface MapViewProps {
 const DEFAULT_CENTER: [number, number] = [-103.5, 43.8]
 
 export function MapView({ onAddWaypoint }: MapViewProps) {
-  const { waypoints, memberLocations, syncStatus, lastSyncedAt } = useApp()
+  const { waypoints, memberLocations, syncStatus, lastSyncedAt, deleteWaypoint } = useApp()
   const { state: network } = useNetwork()
   const [showLayers, setShowLayers] = useState(false)
   const [activeLayer, setActiveLayer] = useState<"terrain" | "satellite">("terrain")
   const [showNearbyHunters, setShowNearbyHunters] = useState(true)
   const [selectedWaypoint, setSelectedWaypoint] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
   const hasAutoCenteredRef = useRef(false)
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
@@ -308,6 +313,46 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
     }
   }, [])
 
+  const handleShareWaypoint = useCallback(async (waypoint: Waypoint) => {
+    const shareText = `${waypoint.name}\nCoordinates: ${waypoint.coordinates.lat.toFixed(6)}, ${waypoint.coordinates.lng.toFixed(6)}\n${waypoint.notes ? `Notes: ${waypoint.notes}` : ""}`
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: waypoint.name,
+          text: shareText,
+        })
+      } catch (error) {
+        // User cancelled or share failed
+        console.log("Share cancelled or failed:", error)
+      }
+    } else if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(shareText)
+        toast.success("Waypoint coordinates copied to clipboard!")
+      } catch (error) {
+        console.error("Failed to copy to clipboard:", error)
+        toast.error("Failed to copy to clipboard")
+      }
+    }
+  }, [])
+
+  const handleDeleteWaypoint = useCallback(async (waypointId: string, waypointName: string) => {
+    setDeleteConfirm({ id: waypointId, name: waypointName })
+  }, [])
+
+  const confirmDeleteWaypoint = useCallback(async () => {
+    if (!deleteConfirm) return
+    try {
+      await deleteWaypoint(deleteConfirm.id)
+      setSelectedWaypoint(null)
+      setDeleteConfirm(null)
+    } catch (error) {
+      console.error("Failed to delete waypoint:", error)
+      throw error
+    }
+  }, [deleteConfirm, deleteWaypoint])
+
   return (
     <div className="flex-1 relative overflow-hidden">
       <div ref={mapContainerRef} className="absolute inset-0" />
@@ -417,7 +462,7 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
                     <div className="flex-1">
                       <h3 className="font-semibold">{waypoint.name}</h3>
                       <p className="text-sm text-muted-foreground">{waypoint.notes}</p>
-                      <div className="flex items-center gap-2 mt-2">
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
                         <Button
                           size="sm"
                           variant="outline"
@@ -426,8 +471,22 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
                           <Navigation className="w-4 h-4 mr-1" />
                           Navigate
                         </Button>
-                        <Button size="sm" variant="ghost">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => waypoint && handleShareWaypoint(waypoint)}
+                        >
+                          <Share2 className="w-4 h-4 mr-1" />
                           Share
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-danger hover:text-danger hover:bg-danger/10"
+                          onClick={() => waypoint && handleDeleteWaypoint(waypoint.id, waypoint.name)}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Delete
                         </Button>
                       </div>
                     </div>
@@ -468,6 +527,18 @@ export function MapView({ onAddWaypoint }: MapViewProps) {
           </Card>
         </div>
       )}
+
+      {/* Delete Waypoint Confirmation */}
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        onOpenChange={(open) => !open && setDeleteConfirm(null)}
+        title="Delete Waypoint"
+        description={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={confirmDeleteWaypoint}
+      />
     </div>
   )
 }

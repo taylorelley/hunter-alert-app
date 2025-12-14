@@ -172,6 +172,9 @@ create policy conversations_update on conversations
 for update using (auth.uid() = any(participant_ids))
 with check (auth.uid() = any(participant_ids));
 
+create policy conversations_delete on conversations
+for delete using (auth.uid() = any(participant_ids));
+
 -- Messages policies
 create policy messages_select on messages
 for select using (
@@ -228,8 +231,8 @@ create policy groups_insert on groups
 for insert with check (owner_id = auth.uid());
 
 create policy groups_update on groups
-for update using (owner_id = auth.uid() or auth.uid() = any(member_ids))
-with check (owner_id = auth.uid() or auth.uid() = any(member_ids));
+for update using (owner_id = auth.uid())
+with check (owner_id = auth.uid());
 
 -- Allow users to join groups (add themselves to member_ids)
 create policy groups_join on groups
@@ -473,6 +476,62 @@ end;
 $$ language plpgsql security invoker set search_path = public;
 
 comment on function public.create_group is 'Create a new group with the authenticated user as owner and initial member.';
+
+create or replace function public.update_group(
+  group_id uuid,
+  new_name text default null,
+  new_description text default null
+)
+returns groups as $$
+declare
+  updated_group groups;
+  current_owner uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication is required';
+  end if;
+
+  -- Check if the group exists and get the owner
+  select owner_id into current_owner
+  from groups
+  where id = group_id;
+
+  if current_owner is null then
+    raise exception 'Group not found';
+  end if;
+
+  -- Only the owner can update group metadata
+  if current_owner != auth.uid() then
+    raise exception 'Only the group owner can update group settings';
+  end if;
+
+  -- Validate inputs before update
+  if new_name is not null and trim(new_name) = '' then
+    raise exception 'Group name cannot be empty or whitespace-only';
+  end if;
+
+  -- Update the group with provided fields
+  update groups
+  set
+    name = coalesce(trim(new_name), name),
+    description = case
+      when new_description is not null and trim(new_description) = '' then null
+      when new_description is not null then trim(new_description)
+      else description
+    end
+  where id = group_id
+  returning * into updated_group;
+
+  -- Check if the update affected any rows (group may have been deleted concurrently)
+  if updated_group is null then
+    raise exception 'Group not found or was deleted';
+  end if;
+
+  return updated_group;
+end;
+$$ language plpgsql security invoker set search_path = public;
+
+comment on function public.update_group is 'Update group metadata (name, description). Only the group owner can update.';
 
 create or replace function public.join_group(group_id uuid)
 returns groups as $$

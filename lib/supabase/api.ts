@@ -278,6 +278,29 @@ export async function createGroup(
   return data as Group;
 }
 
+export async function updateGroup(
+  client: SupabaseClient,
+  groupId: string,
+  updates: { name?: string; description?: string },
+): Promise<Group> {
+  // Client-side validation
+  if (updates.name !== undefined && !updates.name.trim()) {
+    throw new Error('Group name cannot be empty');
+  }
+
+  const { data, error } = await client.rpc('update_group', {
+    group_id: groupId,
+    new_name: updates.name?.trim() || null,
+    new_description: updates.description?.trim() || null,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Group;
+}
+
 export async function joinGroup(client: SupabaseClient, groupId: string): Promise<Group> {
   const { data, error } = await client.rpc('join_group', { group_id: groupId });
 

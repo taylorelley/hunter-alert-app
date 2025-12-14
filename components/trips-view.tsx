@@ -1,11 +1,13 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Plus, ChevronRight, Calendar, Clock, MapPin, CheckCircle2, AlertCircle, X, Pencil, RefreshCcw } from "lucide-react"
+import { Plus, ChevronRight, Calendar, Clock, MapPin, CheckCircle2, AlertCircle, X, Pencil, RefreshCcw, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Trip, useApp } from "./app-provider"
 import { cn } from "@/lib/utils"
+import { parseDate } from "@/lib/date-utils"
 
 interface TripsViewProps {
   onStartTrip: () => void
@@ -13,10 +15,13 @@ interface TripsViewProps {
 }
 
 export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
-  const { currentTrip, trips, endTrip, checkInStatus, nextCheckInDue, refresh, syncStatus } = useApp()
+  const { currentTrip, trips, endTrip, deleteTrip, checkInStatus, nextCheckInDue, refresh, syncStatus } = useApp()
   const [activeTab, setActiveTab] = useState<"active" | "history">("active")
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showFullTimeline, setShowFullTimeline] = useState(false)
+  const [endTripConfirm, setEndTripConfirm] = useState(false)
+  const [deleteTripConfirm, setDeleteTripConfirm] = useState<Trip | null>(null)
 
   const doRefresh = useCallback(async () => {
     setIsRefreshing(true)
@@ -38,19 +43,64 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
   const historyTrips = useMemo(() => {
     return trips
       .filter((trip) => trip.id !== currentTrip?.id)
-      .sort((a, b) => b.startDate.getTime() - a.startDate.getTime())
+      .sort((a, b) => {
+        const aTime = parseDate(a.startDate).getTime()
+        const bTime = parseDate(b.startDate).getTime()
+        return bTime - aTime
+      })
   }, [currentTrip?.id, trips])
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  const formatDate = (date: Date | string): string => {
+    const dateObj = parseDate(date)
+    return dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" })
   }
 
   const formatDateRange = (trip: Trip) => `${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}`
 
   const handleRefresh = doRefresh
 
-  const displayedCheckIns = currentTrip?.checkIns.slice(0, 3) ?? []
+  const handleEndTrip = useCallback(async () => {
+    if (!currentTrip) return
+    setEndTripConfirm(true)
+  }, [currentTrip])
+
+  const confirmEndTrip = useCallback(async () => {
+    try {
+      setError(null)
+      await endTrip()
+      setEndTripConfirm(false)
+    } catch (err) {
+      console.error("Failed to end trip:", err)
+      setError("Failed to end trip. Please try again.")
+      throw err
+    }
+  }, [endTrip])
+
+  const handleDeleteTrip = useCallback(async (trip: Trip, event?: React.MouseEvent) => {
+    // Stop event propagation if called from within a clickable card
+    if (event) {
+      event.stopPropagation()
+    }
+    setDeleteTripConfirm(trip)
+  }, [])
+
+  const confirmDeleteTrip = useCallback(async () => {
+    if (!deleteTripConfirm) return
+    try {
+      setError(null)
+      await deleteTrip(deleteTripConfirm.id)
+      setDeleteTripConfirm(null)
+    } catch (err) {
+      console.error("Failed to delete trip:", err)
+      setError("Failed to delete trip. Please try again.")
+      throw err
+    }
+  }, [deleteTripConfirm, deleteTrip])
+
+  const allCheckIns = currentTrip?.checkIns ?? []
+  const displayedCheckIns = showFullTimeline ? allCheckIns : allCheckIns.slice(0, 3)
   const hasCheckIns = displayedCheckIns.length > 0
+  const hasMoreCheckIns = allCheckIns.length > 3
 
   return (
     <div className="flex-1 overflow-y-auto pb-24">
@@ -113,14 +163,15 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
                       Active Now
                     </CardTitle>
                     <div className="flex gap-2">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEditTrip(currentTrip)}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEditTrip(currentTrip)} title="Edit Trip">
                         <Pencil className="w-4 h-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-danger hover:text-danger"
-                        onClick={endTrip}
+                        onClick={handleEndTrip}
+                        title="End Trip"
                       >
                         <X className="w-4 h-4" />
                       </Button>
@@ -191,10 +242,18 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
                     </div>
                   </div>
 
-                  <Button variant="outline" className="w-full bg-transparent">
-                    View Full Timeline
-                    <ChevronRight className="w-4 h-4 ml-2" />
-                  </Button>
+                  {hasMoreCheckIns && (
+                    <Button
+                      variant="outline"
+                      className="w-full bg-transparent"
+                      onClick={() => setShowFullTimeline(!showFullTimeline)}
+                    >
+                      {showFullTimeline ? "Show Less" : `View Full Timeline (${allCheckIns.length} total)`}
+                      <ChevronRight
+                        className={cn("w-4 h-4 ml-2 transition-transform", showFullTimeline && "rotate-90")}
+                      />
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ) : (
@@ -249,20 +308,22 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
             {historyTrips.map((trip) => (
               <Card
                 key={trip.id}
-                className="hover:bg-muted/50 transition-colors cursor-pointer"
-                onClick={() => onEditTrip(trip)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault()
-                    onEditTrip(trip)
-                  }
-                }}
+                className="hover:bg-muted/50 transition-colors"
               >
                 <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                  <div className="flex items-start justify-between gap-4">
+                    <div
+                      className="flex-1 cursor-pointer"
+                      onClick={() => onEditTrip(trip)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault()
+                          onEditTrip(trip)
+                        }
+                      }}
+                    >
                       <h3 className="font-semibold">{trip.destination}</h3>
                       <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                         <span className="flex items-center gap-1">
@@ -286,7 +347,15 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
                       >
                         {trip.status === "completed" ? "Completed" : trip.status === "paused" ? "Paused" : "Active"}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-danger hover:bg-danger/10"
+                        onClick={(e) => handleDeleteTrip(trip, e)}
+                        title="Delete Trip"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -295,6 +364,30 @@ export function TripsView({ onStartTrip, onEditTrip }: TripsViewProps) {
           </div>
         )}
       </div>
+
+      {/* End Trip Confirmation */}
+      <ConfirmDialog
+        open={endTripConfirm}
+        onOpenChange={setEndTripConfirm}
+        title="End Trip"
+        description={`End trip to ${currentTrip?.destination}? This will mark the trip as completed.`}
+        confirmText="End Trip"
+        cancelText="Cancel"
+        variant="default"
+        onConfirm={confirmEndTrip}
+      />
+
+      {/* Delete Trip Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTripConfirm}
+        onOpenChange={(open) => !open && setDeleteTripConfirm(null)}
+        title="Delete Trip"
+        description={`Delete trip to ${deleteTripConfirm?.destination}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={confirmDeleteTrip}
+      />
     </div>
   )
 }
