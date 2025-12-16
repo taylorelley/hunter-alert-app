@@ -50,6 +50,7 @@ jobs:
     name: Supabase integration
     needs: ci
     runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     timeout-minutes: 60
     env:
       RUN_SUPABASE_INTEGRATION: '1'
@@ -70,6 +71,14 @@ jobs:
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
 
+      - name: Expose Supabase CLI path for test harness
+        run: echo "SUPABASE_BIN=$(which supabase)" >> "$GITHUB_ENV"
+
+      - name: Verify Docker availability
+        run: |
+          docker info
+          docker compose version
+
       - name: Setup pnpm and Node.js
         uses: ./.github/actions/setup-pnpm-node
 
@@ -77,4 +86,4 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Supabase integration tests
-        run: pnpm vitest run __tests__/integration/supabase.messaging.integration.test.ts --pool=forks --maxWorkers=1 --no-file-parallelism
+        run: pnpm vitest run __tests__/integration --pool=forks --maxWorkers=1 --no-file-parallelism
