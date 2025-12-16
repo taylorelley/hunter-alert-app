@@ -43,11 +43,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-        <key>UIViewControllerBasedStatusBarAppearance</key>
-        <true/>
-        <key>NSLocationWhenInUseUsageDescription</key>
-        <string>Location access is used to place alerts and waypoints even on low-connectivity hunts.</string>
-        <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-        <string>We use your location to keep alert boundaries accurate while you navigate in the field.</string>
+<key>UIViewControllerBasedStatusBarAppearance</key>
+<true/>
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>Location access is used to place alerts and waypoints even on low-connectivity hunts.</string>
 </dict>
 </plist>
