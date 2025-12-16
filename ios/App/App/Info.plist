@@ -43,7 +43,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>UIViewControllerBasedStatusBarAppearance</key>
-	<true/>
+<key>UIViewControllerBasedStatusBarAppearance</key>
+<true/>
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>Location access is used to place alerts and waypoints even on low-connectivity hunts.</string>
 </dict>
 </plist>
