@@ -49,7 +49,5 @@
         <string>Location access is used to place alerts and waypoints even on low-connectivity hunts.</string>
         <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
         <string>We use your location to keep alert boundaries accurate while you navigate in the field.</string>
-        <key>NSUserNotificationUsageDescription</key>
-        <string>Notifications keep you updated on hunter alerts and geofence events.</string>
 </dict>
 </plist>
