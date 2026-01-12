@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import maplibregl, { Map as MaplibreMap, Marker, type RequestParameters } from "maplibre-gl"
-import "maplibre-gl/dist/maplibre-gl.css"
 import {
   MapPin,
   Locate,
