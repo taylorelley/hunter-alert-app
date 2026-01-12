@@ -94,12 +94,20 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
     let mounted = true
     const fetchLocationAndWeather = async () => {
       let locationResolved = false
-      const cached = await getCachedWeather()
-      if (mounted && cached) {
-        setWeather(cached)
-        setLastUpdated(new Date(cached.fetchedAt))
-        setUsingCachedWeather(true)
-        setWeatherLoading(false)
+      let cached: WeatherData | null = null
+      try {
+        cached = await getCachedWeather()
+        if (mounted && cached) {
+          setWeather(cached)
+          setLastUpdated(new Date(cached.fetchedAt))
+          setUsingCachedWeather(true)
+          setWeatherLoading(false)
+        }
+      } catch (error) {
+        console.error("Unable to load cached weather:", error)
+        if (mounted) {
+          setWeatherLoading(false)
+        }
       }
 
       try {
@@ -435,7 +443,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
                       value={manualLocation}
                       onChange={(e) => setManualLocation(e.target.value)}
                     />
-                    <Button variant="outline" onClick={handleManualWeather} disabled={weatherLoading}>
+                    <Button variant="outline" onClick={handleManualWeather} disabled={weatherLoading || isOffline}>
                       Use
                     </Button>
                   </div>
