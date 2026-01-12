@@ -17,6 +17,7 @@ import {
   CloudSnow,
   CloudLightning,
   Droplets,
+  ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -52,10 +53,13 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
   const [timeRemaining, setTimeRemaining] = useState("")
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(true)
+  const [weatherRefreshing, setWeatherRefreshing] = useState(false)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [manualLocation, setManualLocation] = useState("")
   const [usingCachedWeather, setUsingCachedWeather] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [locationAvailable, setLocationAvailable] = useState(false)
+  const [showManualLocation, setShowManualLocation] = useState(false)
   const isOffline = connectivity === "offline"
 
   useEffect(() => {
@@ -89,22 +93,42 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
   useEffect(() => {
     let mounted = true
     const fetchLocationAndWeather = async () => {
+      let locationResolved = false
+      let cached: WeatherData | null = null
       try {
-        setWeatherLoading(true)
+        cached = await getCachedWeather()
+        if (mounted && cached) {
+          setWeather(cached)
+          setLastUpdated(new Date(cached.fetchedAt))
+          setUsingCachedWeather(true)
+          setWeatherLoading(false)
+        }
+      } catch (error) {
+        console.error("Unable to load cached weather:", error)
+        if (mounted) {
+          setWeatherLoading(false)
+        }
+      }
+
+      try {
         setLocationError(null)
 
         if (connectivity === "offline") {
-          const cached = await getCachedWeather()
-          if (mounted && cached) {
-            setWeather(cached)
-            setLastUpdated(new Date(cached.fetchedAt))
-            setUsingCachedWeather(true)
+          if (mounted && !cached) {
+            setWeatherLoading(false)
           }
           return
         }
 
+        if (mounted && !cached) {
+          setWeatherLoading(true)
+        }
+        setWeatherRefreshing(true)
         const coords = await getCurrentPosition()
         if (!mounted) return
+        locationResolved = true
+        setLocationAvailable(true)
+        setShowManualLocation(false)
 
         const weatherData = await getWeatherByCoordinates(coords.latitude, coords.longitude, {
           constrained: constrained || connectivity === "satellite",
@@ -115,9 +139,12 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
         setUsingCachedWeather(false)
       } catch (error) {
         console.error("Error fetching location/weather:", error)
-        const cached = await getCachedWeather()
         if (mounted) {
           setLocationError(error instanceof Error ? error.message : "Unable to fetch weather")
+          if (!locationResolved) {
+            setLocationAvailable(false)
+            setShowManualLocation(true)
+          }
           if (cached) {
             setWeather(cached)
             setLastUpdated(new Date(cached.fetchedAt))
@@ -127,6 +154,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
       } finally {
         if (mounted) {
           setWeatherLoading(false)
+          setWeatherRefreshing(false)
         }
       }
     }
@@ -151,6 +179,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
     try {
       setWeatherLoading(true)
       setLocationError(null)
+      setShowManualLocation(true)
       const weatherData = await getWeatherByCity(manualLocation.trim(), {
         constrained: constrained || connectivity === "satellite",
       })
@@ -190,6 +219,8 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
     const date = new Date(timestamp * 1000)
     return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
   }
+
+  const manualLocationExpanded = showManualLocation || !locationAvailable
 
   return (
     <div className="flex-1 overflow-y-auto pb-24">
@@ -312,7 +343,12 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <p className="text-sm font-semibold">Local Weather</p>
-                {lastUpdatedLabel && <p className="text-xs text-muted-foreground">{lastUpdatedLabel}</p>}
+                {weatherRefreshing && weather && (
+                  <p className="text-xs text-muted-foreground">Refreshing with latest conditions...</p>
+                )}
+                {!weatherRefreshing && lastUpdatedLabel && (
+                  <p className="text-xs text-muted-foreground">{lastUpdatedLabel}</p>
+                )}
               </div>
               {(usingCachedWeather || isOffline) && (
                 <Badge variant="outline" className="text-xs">
@@ -331,7 +367,7 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
               </div>
             )}
 
-            {weatherLoading ? (
+            {weatherLoading && !weather ? (
               <div className="flex items-center justify-center p-4">
                 <p className="text-sm text-muted-foreground">Loading weather...</p>
               </div>
@@ -378,22 +414,44 @@ export function HomeView({ onNavigate, onCheckIn, onAddWaypoint, onStartTrip, on
               </div>
             )}
 
-            <div className="space-y-1 pt-2 border-t border-border">
-              <label className="text-xs font-semibold text-muted-foreground">Manual location</label>
-              <div className="flex gap-2">
-                <Input
-                  className="flex-1"
-                  placeholder="Enter city or waypoint"
-                  value={manualLocation}
-                  onChange={(e) => setManualLocation(e.target.value)}
-                />
-                <Button variant="outline" onClick={handleManualWeather} disabled={weatherLoading}>
-                  Use
-                </Button>
+            <div className="space-y-2 pt-2 border-t border-border">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-muted-foreground">Manual location</p>
+                {locationAvailable && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto px-2 py-1 text-xs"
+                    onClick={() => setShowManualLocation((prev) => !prev)}
+                  >
+                    {manualLocationExpanded ? "Hide" : "Show"}
+                    <ChevronDown
+                      className={cn(
+                        "ml-1 h-3 w-3 transition-transform",
+                        manualLocationExpanded && "rotate-180",
+                      )}
+                    />
+                  </Button>
+                )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Use manual entry if location permission is denied or GPS is unreliable.
-              </p>
+              {manualLocationExpanded && (
+                <>
+                  <div className="flex gap-2">
+                    <Input
+                      className="flex-1"
+                      placeholder="Enter city or waypoint"
+                      value={manualLocation}
+                      onChange={(e) => setManualLocation(e.target.value)}
+                    />
+                    <Button variant="outline" onClick={handleManualWeather} disabled={weatherLoading || isOffline}>
+                      Use
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Use manual entry if location permission is denied or GPS is unreliable.
+                  </p>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
