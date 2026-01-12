@@ -104,7 +104,7 @@ function registerTileCacheProtocol() {
 }
 
 function cacheableRequest(url: string, resourceType?: string): RequestParameters {
-  if (url.startsWith("http")) {
+  if (tileProtocolRegistered && url.startsWith("http")) {
     const protocolUrl = url.replace(/^https:\/\//, `${TILE_CACHE_PROTOCOL}://`)
 
     if (resourceType && ["Tile", "Glyphs", "SpriteImage", "SpriteJSON", "Image", "Style", "Source"].includes(resourceType)) {
