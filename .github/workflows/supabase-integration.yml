@@ -36,6 +36,14 @@ jobs:
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
 
+      - name: Expose Supabase CLI path for test harness
+        run: echo "SUPABASE_BIN=$(which supabase)" >> "$GITHUB_ENV"
+
+      - name: Verify Docker availability
+        run: |
+          docker info
+          docker compose version
+
       - name: Setup pnpm and Node.js
         uses: ./.github/actions/setup-pnpm-node
 
